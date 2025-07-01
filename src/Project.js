@@ -32,7 +32,7 @@ export default class Project {
      * @return {URL}
      */
     getResourceDirectory() {
-        let dir = process.env.BEDROCK_ADDON_RESOURCE_DIR ?? "resource";
+        let dir = process.env.BEDROCK_ADDON_RESOURCE_DIR ?? "resources";
         return new URL(dir + '/', this.getWorkingDirectory());
     }
 

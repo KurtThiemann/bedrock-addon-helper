@@ -5,6 +5,7 @@ import InitCommand from "./src/Command/InitCommand.js";
 import RemoveCommand from "./src/Command/RemoveCommand.js";
 import BuildCommand from "./src/Command/BuildCommand.js";
 import Project from "./src/Project.js";
+import WatchCommand from "./src/Command/WatchCommand.js";
 
 let project = new Project();
 let packageJson = JSON.parse(await fs.promises.readFile(new URL("./package.json", import.meta.url), "utf-8"));
@@ -21,7 +22,8 @@ const commands = [
     new RequireCommand(project),
     new InitCommand(project),
     new RemoveCommand(project),
-    new BuildCommand(project)
+    new BuildCommand(project),
+    new WatchCommand(project)
 ];
 
 for (let command of commands) {
