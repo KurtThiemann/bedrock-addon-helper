@@ -20,12 +20,12 @@ export default class CreateServerCommand extends ServerCommand {
      * @inheritDoc
      */
     async run(args, options) {
-        if (await this.getServer(args[0])) {
+        if (await this.servers.getServer(args[0])) {
             console.error(`Server with name "${args[0]}" already exists.`);
             return 1;
         }
 
-        await this.saveServer(args[0], {
+        await this.servers.saveServer(args[0], {
             name: args[0],
             id: crypto.randomUUID().substring(0, 12),
             experiments: [],
@@ -53,6 +53,8 @@ export default class CreateServerCommand extends ServerCommand {
                 LEVEL_NAME: "world",
                 CONTENT_LOG_CONSOLE_OUTPUT_ENABLED: "true",
             },
+            reloadCommand: "reload",
+            fullRestart: false
         });
 
         console.log("Added new server:", args[0]);

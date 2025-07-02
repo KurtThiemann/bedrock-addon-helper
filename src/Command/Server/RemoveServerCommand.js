@@ -20,11 +20,11 @@ export default class RemoveServerCommand extends ServerCommand {
      * @inheritDoc
      */
     async run(args, options) {
-        if (!await this.getServer(args[0])) {
+        if (!await this.servers.getServer(args[0])) {
             console.error(`Server with name "${args[0]}" does not exist.`);
             return 1;
         }
-        await this.removeServer(args[0]);
+        await this.servers.removeServer(args[0]);
         console.log(`Removed server: ${args[0]}`);
         return 0;
     }

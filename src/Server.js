@@ -2,6 +2,7 @@ import Docker from "dockerode";
 import {BedrockPingClient} from "craftping";
 import nbt from "prismarine-nbt";
 import fs from "node:fs";
+import server from "dockerode";
 
 export default class Server {
     /** @type {Object} */ config;
@@ -59,6 +60,8 @@ export default class Server {
                 return this.container = this.docker.getContainer(c.Id);
             }
         }
+
+        return this.container = null;
     }
 
     /**
@@ -114,7 +117,7 @@ export default class Server {
      * @return {Promise<Container>}
      */
     async startContainer() {
-        let container = await this.getContainer();
+        let container = await this.getContainer(true);
         if (container) {
             throw new Error(`Container with name "${this.getContainerName()}" already exists.`);
         }
@@ -178,6 +181,9 @@ export default class Server {
 
         await container.stop();
         this.container = null;
+        while (await this.getContainer(true)) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
         return this;
     }
 
@@ -222,5 +228,30 @@ export default class Server {
         let ip = info.NetworkSettings.IPAddress;
 
         return `${ip}:19132`;
+    }
+
+    async reloadAddons() {
+        let container = await this.getContainer(true);
+        if (!container) {
+            return this;
+        }
+        // send to stdin to trigger addon reload
+
+        const stream = await container.attach({
+            stream: true,
+            stdin: true,
+            stdout: false,
+            stderr: false,
+        });
+
+        await new Promise((resolve, reject) => {
+            stream.write((this.config.reloadCommand ?? 'reload all') + '\n', (err) => {
+                stream.end();
+                if (err) {
+                    return reject(err);
+                }
+            });
+        });
+        return this;
     }
 }

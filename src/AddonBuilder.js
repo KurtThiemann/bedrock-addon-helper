@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import * as esbuild from "esbuild";
 import * as zl from 'zip-lib';
+import PackBuildInformation from "./Command/PackBuildInformation.js";
+import Server from "./Server.js";
 
 export default class AddonBuilder {
     /** @type {Project} */ project;
@@ -17,6 +19,10 @@ export default class AddonBuilder {
         this.output = output;
     }
 
+    /**
+     * @param {boolean} debug
+     * @return {Promise<PackBuildInformation[]>}
+     */
     async build(debug = false) {
         let behaviorBuildDir = new URL("behavior_build/", this.project.getBuildDirectory());
         let resourceBuildDir = new URL("resource_build/", this.project.getBuildDirectory());
@@ -34,16 +40,17 @@ export default class AddonBuilder {
 
         let packageJson = await this.project.readManifest(new URL("package.json", this.project.getWorkingDirectory()));
 
+        let buildInformation = [];
         let packs = [];
         if (await this.project.checkBehaviorExists()) {
-            await this.buildBehaviorPack(behaviorBuildDir, debug);
+            buildInformation.push(await this.buildBehaviorPack(behaviorBuildDir, debug));
             let filename = `${packageJson.name}_behavior.mcpack`;
             await this.packZip(behaviorBuildDir, new URL(filename, artifactDir));
             packs.push(filename);
         }
 
         if (await this.project.checkResourceExists()) {
-            await this.buildResourcePack(resourceBuildDir);
+            buildInformation.push(await this.buildResourcePack(resourceBuildDir));
             let filename = `${packageJson.name}_resources.mcpack`;
             await this.packZip(resourceBuildDir, new URL(filename, artifactDir));
             packs.push(filename);
@@ -63,21 +70,25 @@ export default class AddonBuilder {
             zip.addFile(new URL(pack, artifactDir).pathname, pack);
         }
         await zip.archive(output);
-
-        return 0;
+        return buildInformation;
     }
 
     async buildBehaviorPack(buildDir, debug) {
         await this.project.copyDirectory(this.project.getBehaviorDirectory(), buildDir);
 
         let manifest = await this.project.readManifest(new URL("manifest.json", buildDir));
+        let scriptsDir = new URL("scripts/", buildDir);
+
         let entryPoints = [];
         for (let module of manifest.modules) {
             if (module.type !== "script" || module.language !== "javascript" || !module.entry) {
                 continue;
             }
+            if (!module.entry.startsWith("scripts/")) {
+                throw new Error(`Invalid entry point "${module.entry}" in module "${module.description}". Expected to start with "scripts/".`);
+            }
             entryPoints.push(new URL(module.entry, buildDir).pathname);
-            module.entry = path.normalize(`dist/${module.entry}`);
+            module.entry = path.normalize(`scripts/dist/${module.entry.substring(8)}`);
         }
 
         await this.project.saveManifest(new URL("manifest.json", buildDir), manifest);
@@ -88,15 +99,34 @@ export default class AddonBuilder {
             minify: !debug,
             sourcemap: debug ? 'inline' : false,
             external: ["@minecraft/*"],
-            outbase: buildDir.pathname,
-            outdir: new URL("dist", buildDir).pathname,
+            outbase: scriptsDir.pathname,
+            outdir: new URL("dist/", scriptsDir).pathname,
         });
 
-        await fs.promises.rm(new URL("scripts", buildDir), {recursive: true});
+        for (let file of await fs.promises.readdir(scriptsDir)) {
+            if (file !== "dist") {
+                await fs.promises.rm(new URL(file, scriptsDir), {recursive: true});
+            }
+        }
+
+        return new PackBuildInformation(
+            'behavior',
+            manifest.header.uuid,
+            manifest.header.version,
+            buildDir,
+        )
     }
 
     async buildResourcePack(buildDir) {
         await this.project.copyDirectory(this.project.getResourceDirectory(), buildDir);
+        let manifest = await this.project.readManifest(new URL("manifest.json", buildDir));
+
+        return new PackBuildInformation(
+            'resource',
+            manifest.header.uuid,
+            manifest.header.version,
+            buildDir,
+        );
     }
 
     async packZip(buildDir, outputPath) {

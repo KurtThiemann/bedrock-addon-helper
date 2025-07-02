@@ -12,7 +12,7 @@ export default class StopServerCommand extends ServerCommand {
     }
 
     async run(args, options) {
-        let config = await this.getServer(args[0]);
+        let config = await this.servers.getServer(args[0]);
         if (!config) {
             console.error(`Server with name "${args[0]}" does not exist.`);
             return 1;

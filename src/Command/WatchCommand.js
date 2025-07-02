@@ -1,6 +1,7 @@
 import Command from "./Command.js";
 import chokidar from "chokidar";
 import AddonBuilder from "../AddonBuilder.js";
+import ServerManager from "../ServerManager.js";
 
 
 export default class WatchCommand extends Command {
@@ -42,8 +43,9 @@ export default class WatchCommand extends Command {
 
         try {
             console.log("Building addon for the first time...");
-            await builder.build(options.debug);
+            let result = await builder.build(options.debug);
             console.log("Addon built successfully.");
+            await this.updateServers(result);
         } catch (e) {
             console.error("Error during initial build process:", e);
             return 1;
@@ -74,11 +76,24 @@ export default class WatchCommand extends Command {
         this.buildTimeout = setTimeout(async () => {
             console.log("Rebuilding addon due to changes...");
             try {
-                await builder.build(debug);
+                let result = await builder.build(debug);
                 console.log("Addon rebuilt successfully.");
+                await this.updateServers(result);
             } catch (e) {
                 console.error("Error during rebuild process:", e);
             }
         }, 200);
+    }
+
+    async updateServers(result) {
+        let servers = new ServerManager(this.project);
+        console.log("Reloading servers...");
+        try {
+            await servers.updatePacks(result)
+        } catch (e) {
+            console.error("Error updating servers:", e);
+            return;
+        }
+        console.log("Servers reloaded successfully.");
     }
 }
