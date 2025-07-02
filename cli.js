@@ -6,6 +6,8 @@ import RemoveCommand from "./src/Command/RemoveCommand.js";
 import BuildCommand from "./src/Command/BuildCommand.js";
 import Project from "./src/Project.js";
 import WatchCommand from "./src/Command/WatchCommand.js";
+import CommandGroup from "./src/Command/CommandGroup.js";
+import ServerCommandGroup from "./src/Command/Server/ServerCommandGroup.js";
 
 let project = new Project();
 let packageJson = JSON.parse(await fs.promises.readFile(new URL("./package.json", import.meta.url), "utf-8"));
@@ -23,23 +25,33 @@ const commands = [
     new InitCommand(project),
     new RemoveCommand(project),
     new BuildCommand(project),
-    new WatchCommand(project)
+    new WatchCommand(project),
+    new ServerCommandGroup(project)
 ];
 
-for (let command of commands) {
-    let cmd = program
-        .command(command.getName())
-        .action(async (...args) => {
-            args.pop();
-            let options = args.pop();
-            let exitCode = await command.run(args, options);
-            if (exitCode !== undefined) {
-                process.exit(exitCode);
-            }
-        });
+async function registerCommands(base, commands) {
+    for (let command of commands) {
+        if (command instanceof CommandGroup) {
+            let group = base.command(command.getName())
+                .description(command.getDescription())
+            await registerCommands(group, command.getCommands());
+            continue;
+        }
+        let cmd = base
+            .command(command.getName())
+            .action(async (...args) => {
+                args.pop();
+                let options = args.pop();
+                let exitCode = await command.run(args, options);
+                if (exitCode !== undefined) {
+                    process.exit(exitCode);
+                }
+            });
 
-    await command.configure(cmd);
+        await command.configure(cmd);
+    }
 }
 
+await registerCommands(program, commands);
 program.parse();
 
