@@ -3,7 +3,6 @@ import path from "node:path";
 import * as esbuild from "esbuild";
 import * as zl from 'zip-lib';
 import PackBuildInformation from "./Command/PackBuildInformation.js";
-import Server from "./Server.js";
 
 export default class AddonBuilder {
     /** @type {Project} */ project;

@@ -2,7 +2,6 @@ import Docker from "dockerode";
 import {BedrockPingClient} from "craftping";
 import nbt from "prismarine-nbt";
 import fs from "node:fs";
-import server from "dockerode";
 
 export default class Server {
     /** @type {Object} */ config;
