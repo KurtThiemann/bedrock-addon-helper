@@ -28,11 +28,11 @@ export default class InitCommand extends Command {
      */
     async run(args, options) {
         if (!options.force) {
-            if (!options.noBehavior && await this.checkBehaviorExists()) {
+            if (options.behavior && await this.project.checkBehaviorExists()) {
                 console.error("Behavior pack already exists. Use --force to overwrite, or --no-behavior to skip.");
                 return 1;
             }
-            if (!options.noResources && await this.checkResourceExists()) {
+            if (options.resources && await this.project.checkResourceExists()) {
                 console.error("Resource pack already exists. Use --force to overwrite, or --no-resources to skip.");
                 return 1;
             }
@@ -49,7 +49,7 @@ export default class InitCommand extends Command {
         let behaviorUuid = crypto.randomUUID();
         let resourceUuid = crypto.randomUUID();
 
-        if (!options.noBehavior) {
+        if (options.behavior) {
             await fs.promises.mkdir(this.project.getBehaviorDirectory(), {recursive: true});
             await fs.promises.mkdir(new URL("scripts", this.project.getBehaviorDirectory()), {recursive: true});
             await fs.promises.writeFile(new URL("scripts/index.js", this.project.getBehaviorDirectory()), "// Your script code here\n");
@@ -93,7 +93,7 @@ export default class InitCommand extends Command {
             });
         }
 
-        if (!options.noResources) {
+        if (options.resources) {
             await fs.promises.mkdir(this.project.getResourceDirectory(), {recursive: true});
             await this.project.saveManifest(new URL("manifest.json", this.project.getResourceDirectory()), {
                 "format_version": 2,
