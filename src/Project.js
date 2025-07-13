@@ -1,5 +1,5 @@
 import path from "node:path";
-import FileUtils from "./FileUtils.js";
+import FileUtils from "./Util/FileUtils.js";
 import ResourcePack from "./Addon/ResourcePack.js";
 import BehaviorPack from "./Addon/BehaviorPack.js";
 import AddonManager from "./Addon/AddonManager.js";
@@ -99,5 +99,41 @@ export default class Project {
      */
     getConfigPath() {
         return this.configPath;
+    }
+
+    /**
+     * @return {URL}
+     */
+    getPackageJsonPath() {
+        return new URL("package.json", this.getProjectPath());
+    }
+
+    /**
+     * @return {Promise<Object>}
+     */
+    async readPackageJson() {
+        return await FileUtils.readJson(this.getPackageJsonPath());
+    }
+
+    /**
+     * @param {Object} data
+     * @return {Promise<void>}
+     */
+    async writePackageJson(data) {
+        await FileUtils.writeJson(this.getPackageJsonPath(), data);
+    }
+
+    /**
+     * @param {string} moduleName
+     * @param {string} version
+     * @return {Promise<void>}
+     */
+    async addTypeModule(moduleName, version) {
+        let packageJson = await this.readPackageJson();
+        if (!packageJson.devDependencies) {
+            packageJson.devDependencies = {};
+        }
+        packageJson.devDependencies[moduleName] = version;
+        await this.writePackageJson(packageJson);
     }
 }

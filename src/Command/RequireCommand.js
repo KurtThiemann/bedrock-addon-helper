@@ -1,8 +1,9 @@
 import Command from "./Command.js";
-import pacote from "pacote";
-import {SemVer} from "semver";
+import BehaviorPack from "../Addon/BehaviorPack.js";
 
 export default class RequireCommand extends Command {
+    /** @type {PackageResolver} */ packageResolver;
+
     /**
      * @inheritDoc
      */
@@ -10,6 +11,7 @@ export default class RequireCommand extends Command {
         command.description("Require a specific Bedrock Edition Scripting module")
             .argument("<module>", "The name of the module to require, e.g. @minecraft/server")
             .argument("[version]", "The version of the module to require, e.g. 1.0.0")
+            .option("-a, --addons <addon...>", "The addons to require the module for", null)
     }
 
     /**
@@ -23,81 +25,45 @@ export default class RequireCommand extends Command {
      * @inheritDoc
      */
     async run(args, options) {
-        let [module, version] = args;
-        if (!await this.project.checkBehaviorExists()) {
-            console.error("Behavior directory does not exist.");
-            return 1;
+        let [moduleName, version] = args;
+
+        let resolvedVersion;
+        try {
+            resolvedVersion = await this.packageResolver.resolveVersion(moduleName, version);
+        } catch (e) {
+            this.logger.error(`Failed to resolve version for module ${moduleName}: ${e.message}`);
         }
-        if (!module.startsWith("@minecraft/")) {
-            console.error("Module must start with @minecraft/");
-            return 1;
-        }
-        let packument = await pacote.packument(module);
-        let packageVersion;
-        let versions = [...Object.keys(packument.versions)].reverse();
-        if (version) {
-            packageVersion = this.resolveVersion(versions, version);
+
+        let addons;
+        if (options.addons) {
+            for (let addonName of options.addons) {
+                let addon = await this.project.addonManager.getAddon(addonName);
+                if (!addon) {
+                    this.logger.error(`Addon ${addonName} not found.`);
+                    return 1;
+                }
+                if (!(addon instanceof BehaviorPack)) {
+                    this.logger.error(`Addon ${addonName} is not a behavior pack.`);
+                    return 1;
+                }
+            }
         } else {
-            packageVersion = this.getLatestRelease(versions);
-        }
-
-        if (!packageVersion) {
-            console.error(`Version ${version} not found for module ${module}.`);
-            return 1;
-        }
-
-        console.log(`Adding module ${module}@${packageVersion} to the behavior pack...`);
-        let packageJson = await this.project.readManifest(new URL("package.json", this.project.getWorkingDirectory()));
-        if (!packageJson.devDependencies) {
-            packageJson.devDependencies = {};
-        }
-        packageJson.devDependencies[module] = packageVersion;
-        await this.project.saveManifest(new URL("package.json", this.project.getWorkingDirectory()), packageJson);
-
-        let manifest = await this.project.readManifest(new URL("manifest.json", this.project.getBehaviorDirectory()));
-        if (!manifest.dependencies) {
-            manifest.dependencies = [];
-        }
-        let moduleEntry = manifest.dependencies.find(m => m.module_name === module);
-        if (moduleEntry) {
-            moduleEntry.version = version || packageVersion;
-        } else {
-            manifest.dependencies.push({
-                module_name: module,
-                version: version || packageVersion
-            });
-        }
-
-        await this.project.saveManifest(new URL("manifest.json", this.project.getBehaviorDirectory()), manifest);
-
-        console.log(`Module ${module}@${packageVersion} added successfully. Run 'npm install' to install the module.`);
-        return 0;
-    }
-
-    /**
-     * @param {string[]} available
-     * @param {string} version
-     * @return {string|null}
-     */
-    resolveVersion(available, version) {
-        let hasPrerelease = new SemVer(version).prerelease.length > 0;
-        if (hasPrerelease) {
-            return available.find(v => new SemVer(v).prerelease.length > 0 && v.startsWith(version)) ?? null;
-        } else {
-            return available.find(v => !new SemVer(v).prerelease.length && v.startsWith(version)) ?? null;
-        }
-    }
-
-    /**
-     * @param {string[]} available
-     * @return {string|null}
-     */
-    getLatestRelease(available) {
-        for (let version of available) {
-            if (new SemVer(version).prerelease.length === 0) {
-                return version;
+            addons = await this.project.addonManager.getBehaviorPacks();
+            if (addons.length === 0) {
+                this.logger.error("No addons found in the project.");
+                return 1;
             }
         }
-        return null;
+
+        for (let addon of addons) {
+            this.logger.info(`Adding module ${moduleName}@${version || resolvedVersion} to addon ${addon.getName()}...`);
+            await addon.addRequiredModule(moduleName, version || resolvedVersion);
+        }
+
+        this.logger.info(`Adding module ${moduleName}@${resolvedVersion} to package.json.`);
+        await this.project.addTypeModule(moduleName, resolvedVersion);
+
+        this.logger.info(`Module ${moduleName}@${resolvedVersion} added successfully, run 'npm install' to install the module.`);
+        return 0;
     }
 }

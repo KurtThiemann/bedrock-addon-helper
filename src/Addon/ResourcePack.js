@@ -1,5 +1,5 @@
 import Addon from "./Addon.js";
-import FileUtils from "../FileUtils.js";
+import FileUtils from "../Util/FileUtils.js";
 import fs from "node:fs";
 import AddonBuildResult from "./AddonBuildResult.js";
 

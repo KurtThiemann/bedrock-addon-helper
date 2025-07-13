@@ -1,6 +1,6 @@
 import Addon from "./Addon.js";
 import fs from "node:fs";
-import FileUtils from "../FileUtils.js";
+import FileUtils from "../Util/FileUtils.js";
 import path from "node:path";
 import * as esbuild from "esbuild";
 import AddonBuildResult from "./AddonBuildResult.js";
@@ -64,5 +64,24 @@ export default class BehaviorPack extends Addon {
 
         logger?.log(`Behavior pack "${this.getName()}" built successfully.`);
         return new AddonBuildResult(this, buildPath, result);
+    }
+
+    /**
+     * @param {string} name
+     * @param {string} version
+     * @return {Promise<void>}
+     */
+    async addRequiredModule(name, version) {
+        let manifest = await this.readManifest();
+        let moduleEntry = manifest.dependencies.find(m => m.module_name === name);
+        if (moduleEntry) {
+            moduleEntry.version = version;
+        } else {
+            manifest.dependencies.push({
+                module_name: name,
+                version: version
+            });
+        }
+        await this.writeManifest(manifest);
     }
 }

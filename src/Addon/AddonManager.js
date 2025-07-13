@@ -1,6 +1,6 @@
 import ResourcePack from "./ResourcePack.js";
 import BehaviorPack from "./BehaviorPack.js";
-import FileUtils from "../FileUtils.js";
+import FileUtils from "../Util/FileUtils.js";
 import * as zl from "zip-lib";
 import fs from "node:fs";
 import path from "node:path";
@@ -58,6 +58,24 @@ export default class AddonManager {
             }
         }
         return null;
+    }
+
+    /**
+     * @param {boolean} update
+     * @return {Promise<BehaviorPack[]>}
+     */
+    async getBehaviorPacks(update = false) {
+        let addons = await this.getAddons(update);
+        return /** @type {BehaviorPack[]} */ addons.filter(addon => addon instanceof BehaviorPack);
+    }
+
+    /**
+     * @param {boolean} update
+     * @return {Promise<ResourcePack[]>}
+     */
+    async getResourcePacks(update = false) {
+        let addons = await this.getAddons(update);
+        return /** @type {ResourcePack[]} */ addons.filter(addon => addon instanceof ResourcePack);
     }
 
     /**
@@ -123,6 +141,7 @@ export default class AddonManager {
         }
         /** @type {AddonBuildResult[]} */
         let results = await Promise.all(promises);
+        logger?.log(`Finished building addons.`);
 
         await fs.promises.mkdir(path.dirname(this.getPackagePath().pathname), {recursive: true});
         let outputPath = this.getPackagePath();

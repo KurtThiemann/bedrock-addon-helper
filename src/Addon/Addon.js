@@ -1,6 +1,6 @@
 import * as zl from "zip-lib";
 import fs from "node:fs";
-import FileUtils from "../FileUtils.js";
+import FileUtils from "../Util/FileUtils.js";
 
 export default class Addon {
     static NAME_ALLOWED_CHARS = /^[\w-]+$/;
