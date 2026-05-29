@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Command as Commander } from "commander";
 import * as fs from "node:fs";
 import RequireCommand from "./src/Command/RequireCommand.js";
