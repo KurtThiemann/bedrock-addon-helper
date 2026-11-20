@@ -75,7 +75,7 @@ export class Project {
             buildDir,
             artifactsDir: join(buildDir, "artifacts"),
         };
-        this.#config = validate(this.paths.configFile, config);
+        this.#config = validate(config, `Invalid project config (${this.paths.configFile})`);
     }
 
     get name(): string {
@@ -153,16 +153,14 @@ export class Project {
     }
 
     #update(config: ProjectConfig): void {
-        this.#config = validate(this.paths.configFile, config);
+        this.#config = validate(config, "This change would make bah.json invalid");
     }
 }
 
-function validate(configFile: string, config: ProjectConfig): ProjectConfig {
+function validate(config: ProjectConfig, context = "Invalid project config"): ProjectConfig {
     const result = projectConfigSchema.safeParse(config);
     if (!result.success) {
-        throw new BahError(`Invalid project config (${configFile}):\n${z.prettifyError(result.error)}`, {
-            cause: result.error,
-        });
+        throw new BahError(`${context}:\n${z.prettifyError(result.error)}`, { cause: result.error });
     }
     return result.data;
 }

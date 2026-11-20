@@ -1,10 +1,13 @@
 import { Command, CommanderError } from "commander";
 import { BahError } from "../util/errors.ts";
-import { type CliIo, processIo } from "./io.ts";
+import { registerInitCommand } from "./commands/init-command.ts";
+import { registerPackCommands } from "./commands/pack-commands.ts";
+import { type CliContext, defaultCliContext } from "./context.ts";
 import { readPackageInfo } from "./package-info.ts";
 
-export async function createProgram(io: CliIo): Promise<Command> {
+export async function createProgram(context: CliContext): Promise<Command> {
     const { version } = await readPackageInfo();
+    const { io } = context;
 
     const program = new Command()
         .name("bah")
@@ -17,7 +20,8 @@ export async function createProgram(io: CliIo): Promise<Command> {
         })
         .exitOverride();
 
-    // Commands are registered here as they are implemented.
+    registerInitCommand(program, context);
+    registerPackCommands(program, context);
 
     return program;
 }
@@ -26,8 +30,10 @@ export async function createProgram(io: CliIo): Promise<Command> {
  * Runs the CLI with the given arguments (without the node/script prefix)
  * and returns the process exit code instead of exiting.
  */
-export async function runCli(argv: readonly string[], io: CliIo = processIo): Promise<number> {
-    const program = await createProgram(io);
+export async function runCli(argv: readonly string[], overrides: Partial<CliContext> = {}): Promise<number> {
+    const context = { ...defaultCliContext(), ...overrides };
+    const { io } = context;
+    const program = await createProgram(context);
     try {
         await program.parseAsync([...argv], { from: "user" });
         return 0;

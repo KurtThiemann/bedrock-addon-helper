@@ -9,7 +9,7 @@ describe("runCli", () => {
         const io = captureIo();
         const { version } = await readPackageInfo();
 
-        const code = await runCli(["--version"], io);
+        const code = await runCli(["--version"], { io });
 
         assert.equal(code, 0);
         assert.equal(io.out.trim(), version);
@@ -18,7 +18,7 @@ describe("runCli", () => {
     it("prints usage with --help", async () => {
         const io = captureIo();
 
-        const code = await runCli(["--help"], io);
+        const code = await runCli(["--help"], { io });
 
         assert.equal(code, 0);
         assert.match(io.out, /Usage: bah/);
@@ -27,7 +27,7 @@ describe("runCli", () => {
     it("returns a non-zero exit code for unknown options", async () => {
         const io = captureIo();
 
-        const code = await runCli(["--definitely-not-an-option"], io);
+        const code = await runCli(["--definitely-not-an-option"], { io });
 
         assert.notEqual(code, 0);
         assert.match(io.err, /unknown option/);
