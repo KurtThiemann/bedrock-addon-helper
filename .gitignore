@@ -1,4 +1,6 @@
-test/
 node_modules/
+dist/
 .idea/
 
+# local sample project used for manual testing
+test/
