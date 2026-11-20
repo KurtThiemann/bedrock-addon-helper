@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { z } from "zod";
+import type { z } from "zod";
 import type { Fetch } from "../bedrock/version-resolver.ts";
 import { Project } from "../project/project.ts";
 import type { ContainerRuntime } from "../server/container-runtime.ts";
@@ -49,7 +49,13 @@ export function loadProject(context: CliContext): Promise<Project> {
 export function parseOptions<T extends z.ZodType>(schema: T, command: Command): z.output<T> {
     const result = schema.safeParse(command.opts());
     if (!result.success) {
-        throw new BahError(`Invalid options:\n${z.prettifyError(result.error)}`, { cause: result.error });
+        const lines = result.error.issues.map((issue) => {
+            const [key] = issue.path;
+            const flag =
+                typeof key === "string" ? `--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}` : "option";
+            return `  ${flag}: ${issue.message}`;
+        });
+        throw new BahError(`Invalid options:\n${lines.join("\n")}`, { cause: result.error });
     }
     return result.data;
 }

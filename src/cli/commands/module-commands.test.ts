@@ -81,7 +81,7 @@ describe("CLI: module commands", () => {
         const result = await run("module", "add", "@minecraft/server", "--beta", "--game-version", "soon");
 
         assert.equal(result.code, 1);
-        assert.match(result.err, /gameVersion/);
+        assert.match(result.err, /--game-version: must be latest, preview or a version/);
     });
 
     it("does not run npm install when nothing changed in package.json", async (t) => {

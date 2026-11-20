@@ -12,7 +12,7 @@ import { formatTable } from "../table.ts";
 
 const createOptionsSchema = z.object({
     gameVersion: bedrockVersionSpecSchema,
-    port: z.coerce.number().pipe(portSchema).optional(),
+    port: z.coerce.number({ error: "must be a number" }).pipe(portSchema).optional(),
     experiment: z.array(z.string().min(1)).optional(),
     reload: z.enum(["command", "restart", "none"]),
     reloadCommand: z.string().min(1),
@@ -22,7 +22,7 @@ const removeOptionsSchema = z.object({ purge: z.boolean().optional() });
 
 const logsOptionsSchema = z.object({
     follow: z.boolean().optional(),
-    tail: z.coerce.number().int().min(0).optional(),
+    tail: z.coerce.number({ error: "must be a number" }).int().min(0).optional(),
 });
 
 export function registerServerCommands(program: Command, context: CliContext): void {

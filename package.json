@@ -4,6 +4,23 @@
     "description": "A CLI tool for building and testing Minecraft Bedrock Edition add-ons",
     "license": "MIT",
     "author": "Kurt Thiemann <kurt@aternos.org>",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/KurtThiemann/bedrock-addon-helper.git"
+    },
+    "homepage": "https://github.com/KurtThiemann/bedrock-addon-helper#readme",
+    "bugs": {
+        "url": "https://github.com/KurtThiemann/bedrock-addon-helper/issues"
+    },
+    "keywords": [
+        "minecraft",
+        "bedrock",
+        "addon",
+        "behavior-pack",
+        "resource-pack",
+        "script-api",
+        "cli"
+    ],
     "type": "module",
     "bin": {
         "bah": "dist/bin.js"
@@ -15,7 +32,7 @@
         "node": ">=24"
     },
     "scripts": {
-        "build": "tsc -p tsconfig.build.json",
+        "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
         "typecheck": "tsc -p tsconfig.json",
         "lint": "biome check .",
         "format": "biome check --write .",
