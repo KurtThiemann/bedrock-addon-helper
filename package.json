@@ -24,7 +24,8 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "commander": "^15.1.0"
+        "commander": "^15.1.0",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.6.8",

@@ -1,4 +1,5 @@
 import { Command, CommanderError } from "commander";
+import { BahError } from "../util/errors.ts";
 import { type CliIo, processIo } from "./io.ts";
 import { readPackageInfo } from "./package-info.ts";
 
@@ -34,8 +35,12 @@ export async function runCli(argv: readonly string[], io: CliIo = processIo): Pr
         if (error instanceof CommanderError) {
             return error.exitCode;
         }
-        const message = error instanceof Error ? error.message : String(error);
-        io.stderr(`Error: ${message}\n`);
+        if (error instanceof BahError) {
+            io.stderr(`Error: ${error.message}\n`);
+        } else {
+            // Unexpected: include the stack trace to make bug reports useful.
+            io.stderr(`Unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+        }
         return 1;
     }
 }
