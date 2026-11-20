@@ -57,7 +57,7 @@ export function parseJson<T extends z.ZodType>(filePath: string, text: string, s
             cause: result.error,
         });
     }
-    return result.data;
+    return withKeyOrderOf(result.data, data);
 }
 
 /**
@@ -80,12 +80,36 @@ export async function writeJsonFile<T extends z.ZodType>(
     await mkdir(dir, { recursive: true });
     const tempPath = join(dir, `.${basename(filePath)}.${randomUUID()}.tmp`);
     try {
-        await writeFile(tempPath, `${JSON.stringify(result.data, null, 2)}\n`, "utf8");
+        const data = withKeyOrderOf(result.data, value);
+        await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
         await rename(tempPath, filePath);
     } catch (error) {
         await rm(tempPath, { force: true });
         throw new JsonFileError(filePath, "cannot write file", { cause: error });
     }
+}
+
+/**
+ * zod puts known keys first when parsing loose objects. To keep user files
+ * (package.json, manifests) from being reshuffled, restore the key order of
+ * `original` in `parsed`, recursively. Keys only in `parsed` go last.
+ */
+export function withKeyOrderOf<T>(parsed: T, original: unknown): T {
+    if (Array.isArray(parsed) && Array.isArray(original)) {
+        return parsed.map((item, index) => withKeyOrderOf(item, original[index])) as T;
+    }
+    if (!isPlainObject(parsed) || !isPlainObject(original)) {
+        return parsed;
+    }
+    const keys = [
+        ...Object.keys(original).filter((key) => Object.hasOwn(parsed, key)),
+        ...Object.keys(parsed).filter((key) => !Object.hasOwn(original, key)),
+    ];
+    return Object.fromEntries(keys.map((key) => [key, withKeyOrderOf(parsed[key], original[key])])) as T;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNotFound(error: unknown): boolean {

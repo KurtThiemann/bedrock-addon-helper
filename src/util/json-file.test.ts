@@ -63,6 +63,21 @@ describe("readJsonFileOrDefault", () => {
     });
 });
 
+describe("key order", () => {
+    it("keeps the file's key order through a read/write cycle with a loose schema", async (t) => {
+        const dir = await createTempDir(t);
+        const path = join(dir, "package.json");
+        const loose = z.looseObject({ name: z.string(), nested: z.looseObject({ b: z.number() }).optional() });
+        await writeFiles(dir, { "package.json": '{"private":true,"name":"x","nested":{"a":1,"b":2}}' });
+
+        const data = await readJsonFile(path, loose);
+        await writeJsonFile(path, loose, { ...data, added: 1 });
+
+        assert.deepEqual(Object.keys(JSON.parse(await readFile(path, "utf8"))), ["private", "name", "nested", "added"]);
+        assert.deepEqual(Object.keys(JSON.parse(await readFile(path, "utf8")).nested), ["a", "b"]);
+    });
+});
+
 describe("writeJsonFile", () => {
     it("writes formatted JSON with a trailing newline and creates directories", async (t) => {
         const dir = await createTempDir(t);

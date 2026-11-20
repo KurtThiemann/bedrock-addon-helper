@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 import { BahError } from "../util/errors.ts";
 import { registerInitCommand } from "./commands/init-command.ts";
+import { registerModuleCommands } from "./commands/module-commands.ts";
 import { registerPackCommands } from "./commands/pack-commands.ts";
 import { type CliContext, defaultCliContext } from "./context.ts";
 import { readPackageInfo } from "./package-info.ts";
@@ -22,6 +23,7 @@ export async function createProgram(context: CliContext): Promise<Command> {
 
     registerInitCommand(program, context);
     registerPackCommands(program, context);
+    registerModuleCommands(program, context);
 
     return program;
 }

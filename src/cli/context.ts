@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { z } from "zod";
 import type { Fetch } from "../bedrock/version-resolver.ts";
 import { Project } from "../project/project.ts";
+import { type CommandRunner, spawnCommandRunner } from "../util/command-runner.ts";
 import { BahError } from "../util/errors.ts";
 import { createIoLogger, type Logger } from "../util/logger.ts";
 import { type CliIo, processIo } from "./io.ts";
@@ -12,10 +13,17 @@ export interface CliContext {
     readonly cwd: string;
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly fetch: Fetch;
+    readonly runner: CommandRunner;
 }
 
 export function defaultCliContext(): CliContext {
-    return { io: processIo, cwd: process.cwd(), env: process.env, fetch: globalThis.fetch };
+    return {
+        io: processIo,
+        cwd: process.cwd(),
+        env: process.env,
+        fetch: globalThis.fetch,
+        runner: spawnCommandRunner,
+    };
 }
 
 export function createLogger(context: CliContext): Logger {

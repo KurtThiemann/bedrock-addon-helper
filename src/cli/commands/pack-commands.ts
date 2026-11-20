@@ -7,6 +7,7 @@ import { addPack, linkPacks, removePack, unlinkPacks } from "../../pack/pack-ope
 import { packTypeSchema } from "../../project/project-config.ts";
 import { bedrockVersionSpecSchema } from "../../server/server-config.ts";
 import { type CliContext, createLogger, loadProject, parseOptions } from "../context.ts";
+import { formatTable } from "../table.ts";
 
 const addOptionsSchema = z.object({
     path: z.string().optional(),
@@ -137,16 +138,4 @@ export function registerPackCommands(program: Command, context: CliContext): voi
                     : `"${name}" does not depend on "${dependency}".`,
             );
         });
-}
-
-function formatTable(header: string[], rows: string[][]): string {
-    const widths = header.map((title, column) =>
-        Math.max(title.length, ...rows.map((row) => (row[column] ?? "").length)),
-    );
-    const format = (row: string[]) =>
-        row
-            .map((cell, column) => cell.padEnd(widths[column] ?? 0))
-            .join("  ")
-            .trimEnd();
-    return `${[header, ...rows].map(format).join("\n")}\n`;
 }
