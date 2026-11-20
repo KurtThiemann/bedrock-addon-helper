@@ -11,6 +11,7 @@ import { BahError } from "../util/errors.ts";
 import { pathExists } from "../util/fs.ts";
 import type { Logger } from "../util/logger.ts";
 import type { ContainerRuntime, ContainerSpec, ContainerState, PortMapping } from "./container-runtime.ts";
+import { type DeployablePack, type DeployResult, deployPacks, findBuiltPacks } from "./deploy.ts";
 import { resolveExperimentName, setExperiments } from "./level-dat.ts";
 import {
     allocatePorts,
@@ -61,6 +62,15 @@ export interface ServerStatus {
     /** Live status from the server, if it is running and answering. */
     readonly info: ServerInfo | null;
     readonly address: string;
+}
+
+/** What happened to a server after a deploy. */
+export type ReloadAction = "not-running" | "none" | "command" | "restart";
+
+export interface ServerDeployResult {
+    readonly name: string;
+    readonly deploy: DeployResult;
+    readonly action: ReloadAction;
 }
 
 export interface StartResult {
@@ -164,14 +174,7 @@ export class ServerManager {
         await this.#assertPortsFree(entry);
 
         const dataDir = this.dataDirectory(name);
-        const usage = await this.#projectModuleUsage();
-        await writeServerFiles(dataDir, {
-            config: entry.config,
-            local: entry.local,
-            serverName: `${this.#project.name} ${name}`,
-            advertiseHost: this.#advertiseHost(entry),
-            projectModules: usage.modules,
-        });
+        const usage = await this.#writeServerFiles(entry);
 
         const spec = await this.#containerSpec(entry, version);
         const levelDat = levelDatPath(dataDir);
@@ -181,6 +184,9 @@ export class ServerManager {
             await this.#deps.runtime.stop(container, STOP_TIMEOUT_SECONDS);
         }
 
+        // Install the latest build, so a new server has the packs right away.
+        await deployPacks(dataDir, this.#project.name, await findBuiltPacks(this.#project), this.#projectPackNames());
+
         const experiments = [...entry.config.experiments.map(resolveExperimentName)];
         if (usage.beta && !experiments.includes(BETA_APIS_EXPERIMENT)) {
             experiments.push(BETA_APIS_EXPERIMENT);
@@ -189,6 +195,35 @@ export class ServerManager {
 
         const info = await this.#runUntilReady(entry, spec, START_TIMEOUT_MS, options.signal);
         return { info, address: this.address(entry), version };
+    }
+
+    /**
+     * Installs built packs into a server and, if it is running, applies its
+     * reload strategy. Added, removed or re-versioned packs always need a
+     * restart, since a reload command only reloads scripts and functions.
+     */
+    async deploy(
+        name: string,
+        packs: readonly DeployablePack[],
+        options: { signal?: AbortSignal } = {},
+    ): Promise<ServerDeployResult> {
+        const entry = this.#store.get(name);
+        await this.#writeServerFiles(entry);
+        const deploy = await deployPacks(this.dataDirectory(name), this.#project.name, packs, this.#projectPackNames());
+
+        if ((await this.#deps.runtime.state(this.containerName(entry))) !== "running") {
+            return { name, deploy, action: "not-running" };
+        }
+        const { reload } = entry.config;
+        if (reload.mode === "none") {
+            return { name, deploy, action: "none" };
+        }
+        if (reload.mode === "restart" || deploy.packListChanged) {
+            await this.restart(name, options);
+            return { name, deploy, action: "restart" };
+        }
+        await this.command(name, reload.command);
+        return { name, deploy, action: "command" };
     }
 
     async stop(name: string): Promise<boolean> {
@@ -259,6 +294,23 @@ export class ServerManager {
     }
 
     /* ----------------------------------------------------------- helpers */
+
+    /** Writes server.properties and script config; returns the project's module usage. */
+    async #writeServerFiles(entry: ServerEntry): Promise<{ modules: string[]; beta: boolean }> {
+        const usage = await this.#projectModuleUsage();
+        await writeServerFiles(this.dataDirectory(entry.name), {
+            config: entry.config,
+            local: entry.local,
+            serverName: `${this.#project.name} ${entry.name}`,
+            advertiseHost: this.#advertiseHost(entry),
+            projectModules: usage.modules,
+        });
+        return usage;
+    }
+
+    #projectPackNames(): Set<string> {
+        return new Set(this.#project.packs.map((pack) => pack.name));
+    }
 
     async #runningContainer(name: string): Promise<string> {
         const container = this.containerName(this.#store.get(name));

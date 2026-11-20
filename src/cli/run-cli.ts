@@ -5,6 +5,7 @@ import { registerInitCommand } from "./commands/init-command.ts";
 import { registerModuleCommands } from "./commands/module-commands.ts";
 import { registerPackCommands } from "./commands/pack-commands.ts";
 import { registerServerCommands } from "./commands/server-commands.ts";
+import { registerWatchCommand } from "./commands/watch-command.ts";
 import { type CliContext, defaultCliContext } from "./context.ts";
 import { readPackageInfo } from "./package-info.ts";
 
@@ -28,6 +29,7 @@ export async function createProgram(context: CliContext): Promise<Command> {
     registerModuleCommands(program, context);
     registerBuildCommand(program, context);
     registerServerCommands(program, context);
+    registerWatchCommand(program, context);
 
     return program;
 }

@@ -24,6 +24,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
+        "chokidar": "^6.0.0",
         "commander": "^15.1.0",
         "esbuild": "^0.28.2",
         "fflate": "^0.8.3",

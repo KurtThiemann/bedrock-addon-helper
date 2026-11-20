@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { BedrockVersionResolver } from "../bedrock/version-resolver.ts";
+import { buildProject } from "../build/build-project.ts";
 import { addModule } from "../modules/module-operations.ts";
 import { NpmRegistry } from "../modules/npm-registry.ts";
 import { addPack } from "../pack/pack-operations.ts";
@@ -11,6 +12,7 @@ import { FakeRuntime, fakeServerFetch } from "../test-support/fake-runtime.ts";
 import { createTempDir, writeFiles } from "../test-support/temp-dir.ts";
 import { pathExists } from "../util/fs.ts";
 import { silentLogger } from "../util/logger.ts";
+import { toDeployable } from "./deploy.ts";
 import { readExperiments } from "./level-dat.ts";
 import { ServerConfigStore } from "./server-config-store.ts";
 import { ServerManager } from "./server-manager.ts";
@@ -248,5 +250,61 @@ describe("ServerManager other operations", () => {
         };
         await manager.attach("dev", new AbortController().signal);
         assert.equal(attaches, 2);
+    });
+});
+
+describe("ServerManager.deploy", () => {
+    async function withBuiltPack(t: TestContext) {
+        const context = await setup(t);
+        await addPack(context.project, {
+            name: "bp",
+            type: "behavior",
+            scripts: "js",
+            minEngineVersion: async () => [1, 26, 66],
+        });
+        const result = await buildProject(
+            context.project,
+            {},
+            { logger: silentLogger, runner: { run: () => Promise.resolve() } },
+        );
+        return { ...context, packs: result.packs.map(toDeployable) };
+    }
+
+    it("installs into stopped servers without starting them", async (t) => {
+        const { manager, runtime, packs } = await withBuiltPack(t);
+        await manager.create("dev");
+
+        const result = await manager.deploy("dev", packs);
+
+        assert.equal(result.action, "not-running");
+        assert.deepEqual(runtime.calls, []);
+        assert.equal(
+            await pathExists(join(manager.dataDirectory("dev"), "development_behavior_packs/addon-bp/manifest.json")),
+            true,
+        );
+    });
+
+    it("restarts when the pack list changed and sends the reload command otherwise", async (t) => {
+        const { manager, runtime, packs } = await withBuiltPack(t);
+        const entry = await manager.create("dev");
+        const container = manager.containerName(entry);
+        await manager.create("quiet", { reload: { mode: "none" } });
+        await manager.create("hard", { reload: { mode: "restart" } });
+        // The first start already installs the existing build.
+        await manager.start("dev");
+        await manager.start("quiet");
+        await manager.start("hard");
+        runtime.calls.length = 0;
+
+        assert.equal((await manager.deploy("dev", packs)).action, "command");
+        assert.deepEqual(runtime.calls, [`exec ${container} send-command reload`]);
+
+        assert.equal((await manager.deploy("quiet", packs)).action, "none");
+        assert.equal((await manager.deploy("hard", packs)).action, "restart");
+
+        const bumped = packs.map((pack) => ({ ...pack, version: [1, 0, 1] as [number, number, number] }));
+        runtime.calls.length = 0;
+        assert.equal((await manager.deploy("dev", bumped)).action, "restart");
+        assert.deepEqual(runtime.calls, [`stop ${container}`, `run ${container}`]);
     });
 });

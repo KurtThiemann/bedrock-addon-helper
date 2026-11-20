@@ -1,14 +1,13 @@
 import { type Command, Option } from "commander";
 import { z } from "zod";
 import { formatBedrockVersion } from "../../bedrock/version.ts";
-import { BedrockVersionResolver } from "../../bedrock/version-resolver.ts";
 import { formatUdpPorts } from "../../server/network.ts";
 import { bedrockVersionSpecSchema, type ReloadStrategy } from "../../server/server-config.ts";
-import { ServerConfigStore } from "../../server/server-config-store.ts";
-import { ServerManager } from "../../server/server-manager.ts";
+import type { ServerManager } from "../../server/server-manager.ts";
 import { BahError } from "../../util/errors.ts";
 import { portSchema } from "../../util/schemas.ts";
 import { type CliContext, createLogger, loadProject, parseOptions } from "../context.ts";
+import { createServerManager } from "../servers.ts";
 import { formatTable } from "../table.ts";
 
 const createOptionsSchema = z.object({
@@ -30,14 +29,7 @@ export function registerServerCommands(program: Command, context: CliContext): v
     const createManager = async () => {
         const logger = createLogger(context);
         const project = await loadProject(context);
-        const store = await ServerConfigStore.load(project.paths.stateDir);
-        const manager = new ServerManager(project, store, {
-            runtime: context.containers,
-            fetch: context.fetch,
-            versions: new BedrockVersionResolver(context.fetch),
-            logger,
-        });
-        return { manager, logger };
+        return { manager: await createServerManager(context, project, logger), logger };
     };
 
     const server = program.command("server").description("Manage local test servers (Docker)");
