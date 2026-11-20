@@ -2,6 +2,8 @@ import type { Command } from "commander";
 import { z } from "zod";
 import type { Fetch } from "../bedrock/version-resolver.ts";
 import { Project } from "../project/project.ts";
+import type { ContainerRuntime } from "../server/container-runtime.ts";
+import { DockerCli } from "../server/docker-cli.ts";
 import { type CommandRunner, spawnCommandRunner } from "../util/command-runner.ts";
 import { BahError } from "../util/errors.ts";
 import { createIoLogger, type Logger } from "../util/logger.ts";
@@ -14,6 +16,9 @@ export interface CliContext {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly fetch: Fetch;
     readonly runner: CommandRunner;
+    readonly containers: ContainerRuntime;
+    /** Aborted when the user presses Ctrl+C during long-running commands. */
+    readonly interrupt: () => AbortSignal;
 }
 
 export function defaultCliContext(): CliContext {
@@ -23,6 +28,12 @@ export function defaultCliContext(): CliContext {
         env: process.env,
         fetch: globalThis.fetch,
         runner: spawnCommandRunner,
+        containers: new DockerCli(),
+        interrupt: () => {
+            const controller = new AbortController();
+            process.once("SIGINT", () => controller.abort());
+            return controller.signal;
+        },
     };
 }
 
