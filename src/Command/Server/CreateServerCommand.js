@@ -17,6 +17,13 @@ export default class CreateServerCommand extends ServerCommand {
     }
 
     /**
+     * @return {number}
+     */
+    getRandomPort() {
+        return Math.floor(Math.random() * (65535 - 1024)) + 1024;
+    }
+
+    /**
      * @inheritDoc
      */
     async run(args, options) {
@@ -24,6 +31,9 @@ export default class CreateServerCommand extends ServerCommand {
             console.error(`Server with name "${args[0]}" already exists.`);
             return 1;
         }
+
+        let serverPort = this.getRandomPort();
+        let debugPort = this.getRandomPort();
 
         await this.servers.saveServer(args[0], {
             name: args[0],
@@ -53,8 +63,23 @@ export default class CreateServerCommand extends ServerCommand {
                 LEVEL_NAME: "world",
                 CONTENT_LOG_CONSOLE_OUTPUT_ENABLED: "true",
             },
+            serverProperties: {
+                "allow-outbound-script-debugging": "true",
+                "allow-inbound-script-debugging": "true",
+                "force-inbound-debug-port": "19144",
+            },
             reloadCommand: "reload",
-            fullRestart: false
+            fullRestart: false,
+            exposedPorts: {
+                "19132/udp": {
+                    ip: "",
+                    port: serverPort
+                },
+                "19144/tcp": {
+                    ip: "",
+                    port: debugPort
+                }
+            }
         });
 
         console.log("Added new server:", args[0]);

@@ -40,10 +40,12 @@ export default class AttachServerCommand extends ServerCommand {
                     stdin: true,
                     stdout: true,
                     stderr: true,
-                    tty: true,
+                    hijack: true,
                     logs: true
                 });
+
                 process.stdin.pipe(stream);
+
                 container.modem.demuxStream(stream, process.stdout, process.stderr);
                 await this.waitForStream(stream);
                 console.log(`Detached from server "${args[0]}".`);

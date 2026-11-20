@@ -4,6 +4,7 @@ import RemoveServerCommand from "./RemoveServerCommand.js";
 import StartServerCommand from "./StartServerCommand.js";
 import StopServerCommand from "./StopServerCommand.js";
 import AttachServerCommand from "./AttachServerCommand.js";
+import StartServerDebuggerCommand from "./StartServerDebuggerCommand.js";
 
 export default class ServerCommandGroup extends CommandGroup {
 
@@ -17,6 +18,7 @@ export default class ServerCommandGroup extends CommandGroup {
             new StartServerCommand(this.project),
             new StopServerCommand(this.project),
             new AttachServerCommand(this.project),
+            new StartServerDebuggerCommand(this.project),
         ];
     }
 

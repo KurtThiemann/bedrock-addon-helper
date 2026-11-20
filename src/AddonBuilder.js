@@ -97,6 +97,7 @@ export default class AddonBuilder {
             bundle: true,
             minify: !debug,
             sourcemap: debug ? 'inline' : false,
+            format: 'esm',
             external: ["@minecraft/*"],
             outbase: scriptsDir.pathname,
             outdir: new URL("dist/", scriptsDir).pathname,

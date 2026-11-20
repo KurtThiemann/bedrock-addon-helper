@@ -2,6 +2,7 @@ import Docker from "dockerode";
 import {BedrockPingClient} from "craftping";
 import nbt from "prismarine-nbt";
 import fs from "node:fs";
+import MinecraftDebugAdapter from "./MinecraftDebugAdapter/MinecraftDebugAdapter.js";
 
 export default class Server {
     /** @type {Object} */ config;
@@ -9,6 +10,7 @@ export default class Server {
     /** @type {import("dockerode").Docker} */ docker;
     /** @type {import("dockerode").Container} */ container;
     /** @type {string} */ image = 'itzg/minecraft-bedrock-server:latest';
+    /** @type {MinecraftDebugAdapter} */ debugAdapter = null;
 
     /**
      * @param {Object} config
@@ -69,6 +71,7 @@ export default class Server {
     async configureServer() {
         await fs.promises.mkdir(this.getServerDirectory(), {recursive: true});
         let levelDat = new URL('level.dat', this.getWorldDirectory());
+        let serverProperties = new URL('server.properties', this.getServerDirectory());
 
         if (!await this.project.checkFilesExist(levelDat)) {
             await this.startContainer();
@@ -87,7 +90,35 @@ export default class Server {
         await this.project.saveManifest(new URL('config/default/variables.json', this.getServerDirectory()), this.config.variables ?? {});
         await this.project.saveManifest(new URL('config/default/secrets.json', this.getServerDirectory()), this.config.secrets ?? {});
 
+        let properties = this.parseProperties(await fs.promises.readFile(serverProperties, 'utf-8'));
+        for (let key in this.config.serverProperties ?? {}) {
+            properties[key] = this.config.serverProperties[key];
+        }
+        await fs.promises.writeFile(serverProperties, this.stringifyProperties(properties), 'utf-8');
+
         return this;
+    }
+
+    parseProperties(content) {
+        let properties = {};
+        let lines = content.split('\n');
+        for (let line of lines) {
+            line = line.trim();
+            if (line === '' || line.startsWith('#')) {
+                continue;
+            }
+            let [key, ...rest] = line.split('=');
+            properties[key.trim()] = rest.join('=').trim();
+        }
+        return properties;
+    }
+
+    stringifyProperties(properties) {
+        let content = '';
+        for (let [key, value] of Object.entries(properties)) {
+            content += `${key}=${value}\n`;
+        }
+        return content;
     }
 
     /**
@@ -133,6 +164,16 @@ export default class Server {
             }
         }
 
+        let exposedPorts = {};
+        let portBindings = {};
+        for (let port in (this.config.exposedPorts || {})) {
+            exposedPorts[port] = {};
+            portBindings[port] = [{
+                HostPort: this.config.exposedPorts[port].port.toString(),
+                HostIp: this.config.exposedPorts[port].ip || '',
+            }];
+        }
+
         await this.pullImage();
 
         let options = {
@@ -140,11 +181,14 @@ export default class Server {
             name: this.getContainerName(),
             OpenStdin: true,
             HostConfig: {
+                ExtraHosts: ['host.docker.internal:host-gateway'],
                 Binds: [
                     `${this.getServerDirectory().pathname}:/data`
                 ],
-                AutoRemove: true
+                AutoRemove: true,
+                PortBindings: portBindings,
             },
+            ExposedPorts: exposedPorts,
             Env: env,
             User: `${uid}:${gid}`,
         };
@@ -186,11 +230,65 @@ export default class Server {
         return this;
     }
 
+    async waitForServerReady(signal) {
+        let controller = new AbortController();
+        let readyAbortSignal = AbortSignal.any([controller.signal, signal]);
+        let readyPromises = [];
+        try {
+            readyPromises = [
+                this.waitForServerReadyUsingOutput(readyAbortSignal),
+                this.waitForServerReadyUsingPing(readyAbortSignal)
+            ];
+            await Promise.any(readyPromises);
+        } finally {
+            controller.abort();
+            await Promise.allSettled(readyPromises);
+        }
+        return this;
+    }
+
+    async waitForServerReadyUsingOutput(signal) {
+        let container = await this.getContainer();
+        if (!container) {
+            throw new Error(`Container with name "${this.getContainerName()}" does not exist.`);
+        }
+
+        //get stdout stream with tails and wait for "Server started" message
+        const stream = await container.attach({
+            stream: true,
+            stdin: false,
+            stdout: true,
+            stderr: true,
+        });
+
+        //end stream on abort
+        signal?.addEventListener('abort', () => {
+            stream.destroy()
+        });
+
+        return new Promise((resolve, reject) => {
+            let buffer = '';
+            stream.on('data', (data) => {
+                buffer += data.toString();
+                if (buffer.includes('Server started')) {
+                    stream.destroy();
+                    resolve(this);
+                }
+            });
+            stream.on('error', (err) => {
+                reject(err);
+            });
+            stream.on('end', () => {
+                reject(new Error('Stream ended before server was ready'));
+            });
+        });
+    }
+
     /**
      * @param {?AbortSignal} signal
      * @return {Promise<this>}
      */
-    async waitForServerReady(signal) {
+    async waitForServerReadyUsingPing(signal) {
         let container = await this.getContainer();
         if (!container) {
             throw new Error(`Container with name "${this.getContainerName()}" does not exist.`);
@@ -217,7 +315,11 @@ export default class Server {
         }
     }
 
-    async getAddress() {
+    async getPublicAddress() {
+        if (this.config.exposedPorts && this.config.exposedPorts['19132/udp']) {
+            return `${this.config.exposedPorts['19132/udp'].ip || 'localhost'}:${this.config.exposedPorts['19132/udp'].port}`;
+        }
+
         let container = await this.getContainer();
         if (!container) {
             throw new Error(`Container with name "${this.getContainerName()}" does not exist.`);
@@ -230,27 +332,44 @@ export default class Server {
     }
 
     async reloadAddons() {
+        await this.sendCommand(this.config.reloadCommand ?? 'reload all');
+        return this;
+    }
+
+    async sendCommand(command) {
         let container = await this.getContainer(true);
         if (!container) {
-            return this;
+            throw new Error(`Container with name "${this.getContainerName()}" does not exist.`);
         }
-        // send to stdin to trigger addon reload
 
         const stream = await container.attach({
             stream: true,
             stdin: true,
             stdout: false,
             stderr: false,
+            hijack: true,
         });
 
         await new Promise((resolve, reject) => {
-            stream.write((this.config.reloadCommand ?? 'reload all') + '\n', (err) => {
+            stream.write('\n' + command + '\n', (err) => {
                 stream.end();
                 if (err) {
                     return reject(err);
                 }
+                resolve();
             });
         });
-        return this;
+    }
+
+    async startDebugger(publicPort, packUUID) {
+        await this.sendCommand("script debugger listen");
+        let exposedPort = this.config.exposedPorts['19144/tcp'];
+        if (!exposedPort) {
+            throw new Error(`Debug port 19144/tcp is not exposed for server "${this.config.name}".`);
+        }
+        let mcHost = exposedPort.ip || 'localhost';
+        let mcPort = exposedPort.port;
+        this.debugAdapter = new MinecraftDebugAdapter(publicPort, mcHost, mcPort, packUUID);
+        await this.debugAdapter.start();
     }
 }

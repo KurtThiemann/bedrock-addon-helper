@@ -55,7 +55,7 @@ export default class StartServerCommand extends ServerCommand {
             return 1;
         }
 
-        console.log(`Server "${args[0]}" is now running at ${await server.getAddress()}`);
+        console.log(`Server "${args[0]}" is now running at ${await server.getPublicAddress()}`);
         return 0;
     }
 }
