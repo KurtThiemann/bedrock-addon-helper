@@ -68,6 +68,16 @@ describe("projectConfigSchema", () => {
         assert.deepEqual(issues(config), []);
     });
 
+    for (const path of ["build/pack", ".bah", "node_modules/x", "."]) {
+        it(`rejects the reserved pack path ${path}`, () => {
+            const config = { name: "x", packs: [{ name: "a", type: "behavior", path }] };
+            assert.match(
+                issues(config).join("\n"),
+                /must not be the project root or inside build, \.bah, node_modules/,
+            );
+        });
+    }
+
     it("rejects unknown and self dependencies", () => {
         const config = {
             name: "x",

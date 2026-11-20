@@ -4,12 +4,14 @@ import { Pack } from "../pack/pack.ts";
 import { BahError } from "../util/errors.ts";
 import { pathExists } from "../util/fs.ts";
 import { readJsonFile, writeJsonFile } from "../util/json-file.ts";
-import { type PackConfig, PROJECT_CONFIG_FILE, type ProjectConfig, projectConfigSchema } from "./project-config.ts";
-
-/** Directory for tool state and server config, relative to the project root. */
-export const STATE_DIR = ".bah";
-/** Build output directory, relative to the project root. */
-export const BUILD_DIR = "build";
+import {
+    BUILD_DIR,
+    type PackConfig,
+    PROJECT_CONFIG_FILE,
+    type ProjectConfig,
+    projectConfigSchema,
+    STATE_DIR,
+} from "./project-config.ts";
 
 export interface ProjectPaths {
     readonly root: string;

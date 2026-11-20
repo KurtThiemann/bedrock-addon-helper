@@ -4,6 +4,12 @@ import { identifierSchema, relativePathSchema } from "../util/schemas.ts";
 
 /** File name of the project config, which also marks the project root. */
 export const PROJECT_CONFIG_FILE = "bah.json";
+/** Directory for tool state and server config, relative to the project root. */
+export const STATE_DIR = ".bah";
+/** Build output directory, relative to the project root. */
+export const BUILD_DIR = "build";
+/** Top-level directories packs can't live in. */
+const RESERVED_DIRS: readonly string[] = [BUILD_DIR, STATE_DIR, "node_modules"];
 
 export const packTypeSchema = z.enum(["behavior", "resource"]);
 export type PackType = z.infer<typeof packTypeSchema>;
@@ -67,6 +73,15 @@ export const projectConfigSchema = z
                 }
             }
             paths.push({ path, index });
+
+            const topLevel = path.split("/")[0] ?? "";
+            if (path === "." || RESERVED_DIRS.includes(topLevel)) {
+                ctx.addIssue({
+                    code: "custom",
+                    path: ["packs", index, "path"],
+                    message: `must not be the project root or inside ${RESERVED_DIRS.join(", ")}`,
+                });
+            }
 
             if (pack.scripts && pack.type !== "behavior") {
                 ctx.addIssue({

@@ -5,8 +5,8 @@ import { ensureGitignoreEntries } from "../util/gitignore.ts";
 import { readJsonFile } from "../util/json-file.ts";
 import { identifierSchema } from "../util/schemas.ts";
 import { packageJsonPath, packageJsonSchema, writePackageJson } from "./package-json.ts";
-import { BUILD_DIR, Project, STATE_DIR } from "./project.ts";
-import { PROJECT_CONFIG_FILE } from "./project-config.ts";
+import { Project } from "./project.ts";
+import { BUILD_DIR, PROJECT_CONFIG_FILE, STATE_DIR } from "./project-config.ts";
 
 export const GITIGNORE_ENTRIES = [
     "node_modules/",
