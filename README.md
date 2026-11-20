@@ -13,21 +13,39 @@ TypeScript with esbuild), and runs local test servers in Docker that are updated
 
 ## Installation
 
+As a dev dependency of the project, run with `npx`:
+
+```bash
+npm install -D bedrock-addon-helper
+npx bah --help
+```
+
+This pins the `bah` version per project. `bah` also works in npm scripts (`"scripts": { "watch": "bah watch" }`).
+
+Globally:
+
 ```bash
 npm install -g bedrock-addon-helper
+bah --help
 ```
 
 ## Quick start
 
 ```bash
-bah init my-addon && cd my-addon
-bah pack add resource my-rp
-bah pack add behavior my-bp --scripts ts --depends-on my-rp
-bah module add @minecraft/server
-bah server create dev
-bah server start dev
-bah watch
+mkdir my-addon && cd my-addon
+npm init -y
+npm install -D bedrock-addon-helper
+npx bah init
+npx bah pack add resource my-rp
+npx bah pack add behavior my-bp --scripts ts --depends-on my-rp
+npx bah module add @minecraft/server
+npx bah server create dev
+npx bah server start dev
+npx bah watch
 ```
+
+With a global install, run `bah init my-addon && cd my-addon` instead of the first three lines and drop `npx`.
+`bah init` keeps an existing `package.json` and takes the project name from it.
 
 `bah watch` rebuilds on every change and reloads the server. Connect to the address printed by `bah server start`.
 
