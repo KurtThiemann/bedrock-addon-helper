@@ -56,6 +56,7 @@ my-addon/
 ├── bah.json                  project config (packs)
 ├── package.json              npm dependencies (script module types, libraries)
 ├── tsconfig.json             created for TypeScript packs
+├── bedrock-env.d.ts          declares the game's console, created with tsconfig.json
 ├── packs/
 │   ├── my-bp/                behavior pack sources (manifest.json, scripts/main.ts, ...)
 │   └── my-rp/
@@ -91,7 +92,7 @@ to use a different directory.
 
 | Field                   | Description                                                                                                                                                                                                                                                 |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                  | Project name. Used for artifact, pack directory and container names. Letters, digits, `_`, `-`.                                                                                                                                                             |
+| `name`                  | Project name. Used for artifact, pack directory, manifest and container names. Letters, digits, `_`, `-`.                                                                                                                                                   |
 | `packs[].name`          | Pack name, unique in the project.                                                                                                                                                                                                                           |
 | `packs[].type`          | `behavior` or `resource`.                                                                                                                                                                                                                                   |
 | `packs[].path`          | Pack directory relative to the project root. Not inside `build/`, `.bah/` or `node_modules/`.                                                                                                                                                               |
@@ -130,11 +131,12 @@ bah pack unlink <pack> <dependency>
 - `--min-engine-version <version>`: `latest` (default), `preview` or a version. Resolved through the Minecraft
   download API.
 - `--scripts <js|ts>`: create `scripts/main.js` or `scripts/main.ts` and a script module in the manifest. `ts` also
-  creates `tsconfig.json` if missing.
+  creates `tsconfig.json` and `bedrock-env.d.ts` (declares the game's `console`) if missing, for `tsc` type checking.
 - `--depends-on <packs...>`
 - `--no-bundle`
 
-New packs get a `format_version` 2 manifest with new UUIDs. If the directory already contains a `manifest.json`, the
+New packs get a `format_version` 2 manifest with new UUIDs, named `<project>-<pack>` (e.g. `bans-bp`) unless the
+pack name already starts with the project name. If the directory already contains a `manifest.json`, the
 pack is registered without changing its files, and the script entry is taken from the manifest.
 
 `pack remove` refuses while other packs depend on the pack and keeps the files unless `--delete-files` is given.

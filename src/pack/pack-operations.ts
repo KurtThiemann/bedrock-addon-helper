@@ -13,6 +13,7 @@ export type ScriptLanguage = "js" | "ts";
 
 export const PACKS_DIR = "packs";
 export const TSCONFIG_FILE = "tsconfig.json";
+export const ENV_DECLARATIONS_FILE = "bedrock-env.d.ts";
 
 export interface AddPackOptions {
     name: string;
@@ -92,7 +93,7 @@ export async function addPack(project: Project, options: AddPackOptions): Promis
         await pack.writeManifest(
             createManifest({
                 type: options.type,
-                name: options.name,
+                name: manifestName(project.name, options.name),
                 description: options.description ?? "",
                 minEngineVersion: await options.minEngineVersion(),
                 // The manifest points at the built file, which is always .js.
@@ -109,8 +110,8 @@ export async function addPack(project: Project, options: AddPackOptions): Promis
         }
     }
 
-    if (options.scripts === "ts" && (await ensureTsconfig(project))) {
-        created.push(TSCONFIG_FILE);
+    if (options.scripts === "ts") {
+        created.push(...(await ensureTypeScriptConfig(project)));
     }
 
     await syncPackDependencies(project, pack);
@@ -165,29 +166,66 @@ export async function unlinkPacks(project: Project, name: string, dependency: st
     return true;
 }
 
-/** tsconfig.json for type-checking pack scripts. Only written if missing. */
-async function ensureTsconfig(project: Project): Promise<boolean> {
-    const path = join(project.paths.root, TSCONFIG_FILE);
-    if (await pathExists(path)) {
-        return false;
-    }
+/**
+ * Files for type-checking TypeScript pack scripts with `tsc`: tsconfig.json
+ * and a declaration of the globals the game provides. Each is only written
+ * if missing. Returns the created file names.
+ */
+async function ensureTypeScriptConfig(project: Project): Promise<string[]> {
+    const created: string[] = [];
     const tsconfig = {
         compilerOptions: {
             target: "es2023",
             lib: ["es2023"],
             module: "es2022",
             moduleResolution: "bundler",
+            // No Node or DOM types; the game's globals come from bedrock-env.d.ts.
             types: [],
             strict: true,
             noEmit: true,
             isolatedModules: true,
             verbatimModuleSyntax: true,
+            // Scripts import each other with .ts extensions; esbuild resolves them.
+            allowImportingTsExtensions: true,
             skipLibCheck: true,
         },
         exclude: ["node_modules", "build", ".bah"],
     };
-    await writeFile(path, `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
+    if (await writeIfMissing(join(project.paths.root, TSCONFIG_FILE), `${JSON.stringify(tsconfig, null, 2)}\n`)) {
+        created.push(TSCONFIG_FILE);
+    }
+    if (await writeIfMissing(join(project.paths.root, ENV_DECLARATIONS_FILE), ENV_DECLARATIONS)) {
+        created.push(ENV_DECLARATIONS_FILE);
+    }
+    return created;
+}
+
+/** Globals of the game's script engine that no type package declares. */
+const ENV_DECLARATIONS = `/** Console of the Minecraft script engine (output goes to the content log). */
+declare const console: {
+    log(...data: unknown[]): void;
+    info(...data: unknown[]): void;
+    warn(...data: unknown[]): void;
+    error(...data: unknown[]): void;
+};
+`;
+
+async function writeIfMissing(path: string, content: string): Promise<boolean> {
+    if (await pathExists(path)) {
+        return false;
+    }
+    await writeFile(path, content, "utf8");
     return true;
+}
+
+/**
+ * Name for a new pack's manifest header, shown in the game and in server
+ * logs: `<project>-<pack>` (e.g. "bans-bp"), unless the pack name already
+ * starts with the project name.
+ */
+export function manifestName(projectName: string, packName: string): string {
+    const prefixed = packName === projectName || packName.startsWith(`${projectName}-`);
+    return prefixed ? packName : `${projectName}-${packName}`;
 }
 
 function scriptTemplate(packName: string): string {

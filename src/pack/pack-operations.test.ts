@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { Project } from "../project/project.ts";
 import { createTempDir, writeFiles } from "../test-support/temp-dir.ts";
 import { pathExists } from "../util/fs.ts";
 import { isModuleDependency, isPackDependency, type VersionTuple } from "./manifest.ts";
-import { addPack, linkPacks, removePack, unlinkPacks } from "./pack-operations.ts";
+import { addPack, linkPacks, manifestName, removePack, unlinkPacks } from "./pack-operations.ts";
 
 const engineVersion = async (): Promise<VersionTuple> => [1, 26, 70];
 
@@ -21,6 +24,34 @@ async function reload(project: Project): Promise<Project> {
 }
 
 describe("addPack", () => {
+    it("generates a TypeScript setup that tsc accepts (.ts imports, console)", async (t) => {
+        const project = await createProject(t);
+        await addPack(project, { name: "main", type: "behavior", scripts: "ts", minEngineVersion: engineVersion });
+        await writeFiles(join(project.paths.root, "packs/main/scripts"), {
+            "main.ts": 'import { greet } from "./greet.ts";\nconsole.warn(greet("world"));\n',
+            "greet.ts": 'export const greet = (name: string): string => "hello " + name;\n',
+        });
+
+        // The TypeScript compiler from this repo's devDependencies.
+        const tsc = fileURLToPath(new URL("../../node_modules/typescript/bin/tsc", import.meta.url));
+        await promisify(execFile)(process.execPath, [tsc, "-p", join(project.paths.root, "tsconfig.json")]);
+    });
+
+    it("keeps existing TypeScript config files", async (t) => {
+        const project = await createProject(t);
+        await writeFiles(project.paths.root, { "tsconfig.json": "{}", "bedrock-env.d.ts": "// mine\n" });
+
+        const result = await addPack(project, {
+            name: "main",
+            type: "behavior",
+            scripts: "ts",
+            minEngineVersion: engineVersion,
+        });
+
+        assert.deepEqual(result.created, ["packs/main/manifest.json", "packs/main/scripts/main.ts"]);
+        assert.equal(await readFile(join(project.paths.root, "bedrock-env.d.ts"), "utf8"), "// mine\n");
+    });
+
     it("creates a behavior pack with a TypeScript entry and tsconfig", async (t) => {
         const project = await createProject(t);
 
@@ -33,10 +64,15 @@ describe("addPack", () => {
         });
 
         assert.equal(result.imported, false);
-        assert.deepEqual(result.created, ["packs/main/manifest.json", "packs/main/scripts/main.ts", "tsconfig.json"]);
+        assert.deepEqual(result.created, [
+            "packs/main/manifest.json",
+            "packs/main/scripts/main.ts",
+            "tsconfig.json",
+            "bedrock-env.d.ts",
+        ]);
 
         const manifest = await result.pack.readManifest();
-        assert.equal(manifest.header.name, "main");
+        assert.equal(manifest.header.name, "addon-main");
         assert.equal(manifest.header.description, "Main pack");
         assert.deepEqual(manifest.header.min_engine_version, [1, 26, 70]);
         assert.deepEqual(
@@ -193,6 +229,19 @@ describe("linkPacks / unlinkPacks", () => {
         assert.deepEqual((await bp.readManifest()).dependencies, [
             { uuid: rpManifest.header.uuid, version: [2, 0, 0] },
         ]);
+    });
+});
+
+describe("manifestName", () => {
+    it("prefixes the pack name with the project name", () => {
+        assert.equal(manifestName("bans", "bp"), "bans-bp");
+        assert.equal(manifestName("bans", "rp"), "bans-rp");
+    });
+
+    it("doesn't repeat a project name the pack name already has", () => {
+        assert.equal(manifestName("bans", "bans"), "bans");
+        assert.equal(manifestName("bans", "bans-bp"), "bans-bp");
+        assert.equal(manifestName("bans", "bansx"), "bans-bansx");
     });
 });
 
