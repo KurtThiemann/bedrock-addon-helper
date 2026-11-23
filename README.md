@@ -344,11 +344,9 @@ the TypeScript types are derived from.
 Releases are published to npm by `.github/workflows/release.yml` using npm trusted publishing (no npm token; npm
 adds provenance).
 
-1. Set `version` in `package.json` and commit.
-2. Publish a GitHub release with the tag `v<version>`, e.g. `v2.0.0`.
-
-The workflow checks that the tag matches the version, runs lint, typecheck and tests, and publishes. Prerelease
-versions (e.g. `2.1.0-beta.1`) are published with the dist-tag `next`.
+To release, publish a GitHub release whose tag is the version, e.g. `v2.0.0`. The workflow sets that version in
+`package.json` (only in the CI job; the repository keeps the placeholder `0.0.0-dev`), runs lint, typecheck and
+tests, and publishes. Prerelease versions (e.g. `v2.1.0-beta.1`) are published with the dist-tag `next`.
 
 ## License
 

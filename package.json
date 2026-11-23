@@ -1,6 +1,6 @@
 {
     "name": "@kurtthiemann/bah",
-    "version": "2.0.0-alpha.0",
+    "version": "0.0.0-dev",
     "description": "A CLI tool for building and testing Minecraft Bedrock Edition add-ons",
     "license": "MIT",
     "author": "Kurt Thiemann <kurt@aternos.org>",
