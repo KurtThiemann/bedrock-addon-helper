@@ -16,7 +16,7 @@ TypeScript with esbuild), and runs local test servers in Docker that are updated
 As a dev dependency of the project, run with `npx`:
 
 ```bash
-npm install -D bedrock-addon-helper
+npm install -D @kurtthiemann/bah
 npx bah --help
 ```
 
@@ -25,7 +25,7 @@ This pins the `bah` version per project. `bah` also works in npm scripts (`"scri
 Globally:
 
 ```bash
-npm install -g bedrock-addon-helper
+npm install -g @kurtthiemann/bah
 bah --help
 ```
 
@@ -34,7 +34,7 @@ bah --help
 ```bash
 mkdir my-addon && cd my-addon
 npm init -y
-npm install -D bedrock-addon-helper
+npm install -D @kurtthiemann/bah
 npx bah init
 npx bah pack add resource my-rp
 npx bah pack add behavior my-bp --scripts ts --depends-on my-rp
@@ -338,6 +338,17 @@ Sources are TypeScript limited to erasable syntax, so Node runs them without a b
 `.ts` extension; `tsc` rewrites them on build. Tests live next to the code as `*.test.ts`. Every stored file
 (`bah.json`, `servers.json`, `servers.local.json`, manifests, `package.json`) has a zod schema in the source, which
 the TypeScript types are derived from.
+
+### Releasing
+
+Releases are published to npm by `.github/workflows/release.yml` using npm trusted publishing (no npm token; npm
+adds provenance).
+
+1. Set `version` in `package.json` and commit.
+2. Publish a GitHub release with the tag `v<version>`, e.g. `v2.0.0`.
+
+The workflow checks that the tag matches the version, runs lint, typecheck and tests, and publishes. Prerelease
+versions (e.g. `2.1.0-beta.1`) are published with the dist-tag `next`.
 
 ## License
 
