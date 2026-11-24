@@ -67,6 +67,23 @@ describe("runGameTests", () => {
         assert.deepEqual(server.sent, ["gametest runset bah"]);
     });
 
+    it("drops the unhandled rejection printed for a failed assertion in an async test", async () => {
+        const server = fakeServer({
+            "gametest runset bah": [
+                "[2026-11-24 13:33:16:775 INFO] Running 1 tests with tag 'bah'...",
+                "[2026-11-24 14:22:01:100 ERROR] [Scripting] [bans-bp] Unhandled promise rejection: GameTestError: ban should succeed",
+                "    at <anonymous> (bans-tests.js:8)",
+                "",
+                "onTestFailed: A:one - ban should succeed",
+            ],
+        });
+
+        const { report, scripts } = run(server, [{ tag: "bah" }]);
+
+        assert.equal((await report).results[0]?.message, "ban should succeed");
+        assert.deepEqual(scripts, []);
+    });
+
     it("passes on script errors that are not a test's failure", async () => {
         const server = fakeServer({
             "gametest runset bah": [

@@ -69,11 +69,7 @@ export async function runGameTests(options: RunGameTestsOptions): Promise<TestRu
                 throw error;
             }
 
-            if (
-                event.type === "failed" &&
-                heldError !== null &&
-                withoutPackPrefix(heldError.message) === event.message
-            ) {
+            if (event.type === "failed" && heldError !== null && isSameError(heldError.message, event.message)) {
                 heldError = null;
             }
             releaseHeldError();
@@ -105,9 +101,16 @@ export async function runGameTests(options: RunGameTestsOptions): Promise<TestRu
     return { results, problems };
 }
 
-/** Script errors start with the pack name: `[addon-bp] Error: ...` */
-function withoutPackPrefix(message: string): string {
-    return message.replace(/^\[[^\]]*\] /, "");
+/**
+ * Whether a script error is the failure of a test, printed a second time:
+ * `[pack] Error: boom ...` for an error thrown in a test, or
+ * `[pack] Unhandled promise rejection: GameTestError: <message>` for a failed
+ * assertion in an async test.
+ */
+function isSameError(scriptError: string, failure: string): boolean {
+    const firstLine = (text: string) => text.split("\n")[0]?.trim() ?? "";
+    const failureLine = firstLine(failure);
+    return failureLine !== "" && firstLine(scriptError).endsWith(failureLine);
 }
 
 /**
