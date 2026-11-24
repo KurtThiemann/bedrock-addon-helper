@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { BedrockVersionResolver } from "../bedrock/version-resolver.ts";
+import { buildTestPack } from "../build/build-pack.ts";
 import { buildProject } from "../build/build-project.ts";
 import { addModule } from "../modules/module-operations.ts";
 import { NpmRegistry } from "../modules/npm-registry.ts";
@@ -306,5 +307,54 @@ describe("ServerManager.deploy", () => {
         runtime.calls.length = 0;
         assert.equal((await manager.deploy("dev", bumped)).action, "restart");
         assert.deepEqual(runtime.calls, [`stop ${container}`, `run ${container}`]);
+    });
+});
+
+describe("test servers", () => {
+    it("start with a fresh copy of their first world and the test build", async (t) => {
+        const { project, runtime, manager } = await setup(t);
+        await addPack(project, {
+            name: "bp",
+            type: "behavior",
+            scripts: "js",
+            minEngineVersion: async () => [1, 26, 66],
+        });
+        await writeFiles(project.paths.root, { "packs/bp/tests/a.test.js": "" });
+        await buildTestPack(project, project.getPack("bp"), {
+            testFiles: ["tests/a.test.js"],
+            gametestVersion: "1.0.0-beta",
+        });
+        const entry = await manager.create("test", { test: true });
+        const container = manager.containerName(entry);
+        assert.equal(entry.config.test, true);
+        assert.deepEqual(entry.config.reload, { mode: "none" });
+
+        await manager.start("test");
+
+        const data = manager.dataDirectory("test");
+        assert.deepEqual(runtime.calls, [`run ${container}`, `stop ${container}`, `run ${container}`]);
+        assert.match(await readFile(join(data, "server.properties"), "utf8"), /^level-type=FLAT$/m);
+        // The Beta APIs are always on, and the test build is installed.
+        assert.deepEqual(await readExperiments(join(data, "worlds/world/level.dat")), ["gametest"]);
+        const manifest = JSON.parse(
+            await readFile(join(data, "development_behavior_packs/addon-bp/manifest.json"), "utf8"),
+        );
+        assert.ok(JSON.stringify(manifest).includes("@minecraft/server-gametest"));
+
+        // Changes to the world are gone after the next start; the world isn't generated again.
+        await writeFiles(data, { "worlds/world/leftover.txt": "x" });
+        await manager.stop("test");
+        runtime.calls.length = 0;
+        await manager.start("test");
+        assert.deepEqual(runtime.calls, [`run ${container}`]);
+        assert.equal(await pathExists(join(data, "worlds/world/leftover.txt")), false);
+        assert.equal(await pathExists(join(data, "worlds/world/world_behavior_packs.json")), true);
+    });
+
+    it("don't take normal builds", async (t) => {
+        const { manager } = await setup(t);
+        await manager.create("test", { test: true });
+
+        await assert.rejects(manager.deploy("test", []), /test server/);
     });
 });

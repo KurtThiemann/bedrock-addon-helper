@@ -41,8 +41,17 @@ export interface ServerFilesInput {
     readonly projectModules: readonly string[];
 }
 
+/** server.properties defaults of test servers, applied when their world is created. */
+export const TEST_SERVER_PROPERTIES: Readonly<Record<string, ServerPropertyValue>> = {
+    "level-type": "FLAT",
+};
+
+export function worldDirectory(dataDir: string): string {
+    return join(dataDir, "worlds", LEVEL_NAME);
+}
+
 export function levelDatPath(dataDir: string): string {
-    return join(dataDir, "worlds", LEVEL_NAME, "level.dat");
+    return join(worldDirectory(dataDir), "level.dat");
 }
 
 /**
@@ -76,7 +85,10 @@ async function writeProperties(dataDir: string, input: ServerFilesInput): Promis
     if (input.advertiseHost !== null) {
         managed["server-public-ip"] = input.advertiseHost;
     }
-    const values = { ...DEFAULT_SERVER_PROPERTIES, ...input.config.properties, ...managed };
+    const defaults = input.config.test
+        ? { ...DEFAULT_SERVER_PROPERTIES, ...TEST_SERVER_PROPERTIES }
+        : DEFAULT_SERVER_PROPERTIES;
+    const values = { ...defaults, ...input.config.properties, ...managed };
     await writeFile(path, updateServerProperties(current, values), "utf8");
 }
 

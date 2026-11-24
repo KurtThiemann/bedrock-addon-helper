@@ -1,14 +1,11 @@
 import { mkdir } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import type * as Nbt from "prismarine-nbt";
 import type { Fetch } from "../bedrock/version-resolver.ts";
 import type { ContainerRuntime, ContainerSpec, ContainerState } from "../server/container-runtime.ts";
 import { writeLevelDat } from "../server/level-dat.ts";
 import { pathExists } from "../util/fs.ts";
+import { nbt } from "../util/nbt.ts";
 import { fakeNpmFetch } from "./fake-npm.ts";
-
-const nbt = createRequire(import.meta.url)("prismarine-nbt") as typeof Nbt;
 
 /** In-memory containers. `run` creates the world like a real first start would. */
 export class FakeRuntime implements ContainerRuntime {
@@ -66,6 +63,19 @@ export class FakeRuntime implements ContainerRuntime {
 
     async logs(name: string, options: { follow: boolean; tail?: number | undefined }): Promise<void> {
         this.calls.push(`logs ${name} follow=${options.follow} tail=${options.tail ?? "-"}`);
+    }
+
+    /** Lines `followLogs` passes on, per container name ("*" for any); it then waits for the abort signal. */
+    readonly output = new Map<string, readonly string[]>();
+
+    async followLogs(name: string, onLine: (line: string) => void, signal: AbortSignal): Promise<void> {
+        this.calls.push(`followLogs ${name}`);
+        for (const line of this.output.get(name) ?? this.output.get("*") ?? []) {
+            onLine(line);
+        }
+        if (!signal.aborted) {
+            await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+        }
     }
 
     /** Whether a running container publishes this TCP port. */

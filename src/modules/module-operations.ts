@@ -4,6 +4,8 @@ import type { Pack } from "../pack/pack.ts";
 import { type PackageJson, readPackageJson, writePackageJson } from "../project/package-json.ts";
 import type { Project } from "../project/project.ts";
 import type { BedrockVersionSpec } from "../server/server-config.ts";
+import { GAMETEST_MODULE } from "../testing/gametest-bundle.ts";
+import { findTestFiles } from "../testing/test-files.ts";
 import { BahError } from "../util/errors.ts";
 import { isMinecraftModule, type ModuleKind, moduleKindOf } from "./module-catalog.ts";
 import {
@@ -95,6 +97,30 @@ export async function addModule(
     }
 
     return { module, pack, warnings };
+}
+
+/**
+ * Makes sure an engine module's types are in package.json without adding
+ * it to any manifest (e.g. @minecraft/server-gametest, which only test
+ * builds use). Returns the module and whether package.json changed.
+ */
+export async function ensureModuleTypes(
+    project: Project,
+    services: ModuleServices,
+    name: string,
+): Promise<{ module: ResolvedModule; added: boolean }> {
+    const kind = moduleKindOf(name);
+    const packageJson = await readPackageJson(project.paths.root);
+    const installed = installedModules(packageJson).get(name);
+    if (installed !== undefined) {
+        return { module: installedAsResolved(name, kind, installed.version), added: false };
+    }
+    const module = await resolveModule(services.registry, {
+        name,
+        gameTarget: () => gameTargetFor(packageJson, services, undefined),
+    });
+    await writePackageJson(project.paths.root, withModule(packageJson, module));
+    return { module, added: true };
 }
 
 /* --------------------------------------------------------------- remove */
@@ -249,6 +275,11 @@ export async function listModules(project: Project): Promise<ModuleListEntry[]> 
         }
     }
     const mixedBetas = new Set(betaTargets.values()).size > 1;
+    // Test builds add the GameTest module themselves, so no manifest lists it.
+    const testFileCounts = await Promise.all(
+        project.behaviorPacks.map(async (pack) => (await findTestFiles(pack)).length),
+    );
+    const usedByTests = (name: string) => name === GAMETEST_MODULE && testFileCounts.some((count) => count > 0);
 
     const names = [...new Set([...installed.keys(), ...usage.keys()])].sort();
     return names.map((name) => {
@@ -265,7 +296,7 @@ export async function listModules(project: Project): Promise<ModuleListEntry[]> 
                     problems.push(`pack "${pack}" uses ${version}, package.json has ${npmVersion}`);
                 }
             }
-            if (packs.size === 0) {
+            if (packs.size === 0 && !usedByTests(name)) {
                 problems.push("not used by any pack");
             }
         }

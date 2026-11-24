@@ -9,10 +9,9 @@ import {
     updateModules,
 } from "../../modules/module-operations.ts";
 import { NpmRegistry } from "../../modules/npm-registry.ts";
-import type { Project } from "../../project/project.ts";
 import { bedrockVersionSpecSchema } from "../../server/server-config.ts";
-import type { Logger } from "../../util/logger.ts";
 import { type CliContext, createLogger, loadProject, parseOptions } from "../context.ts";
+import { runNpmInstall } from "../npm.ts";
 import { formatTable } from "../table.ts";
 
 const installOption = { install: z.boolean() };
@@ -73,7 +72,7 @@ export function registerModuleCommands(program: Command, context: CliContext): v
             result.warnings.forEach((warning) => {
                 logger.warn(warning);
             });
-            await install(context, project, logger, options.install);
+            await runNpmInstall(context, project, logger, options.install);
         });
 
     module
@@ -94,7 +93,7 @@ export function registerModuleCommands(program: Command, context: CliContext): v
             }
             if (result.removedFromPackageJson) {
                 logger.info(`Removed ${name} from package.json.`);
-                await install(context, project, logger, options.install);
+                await runNpmInstall(context, project, logger, options.install);
             }
         });
 
@@ -123,7 +122,7 @@ export function registerModuleCommands(program: Command, context: CliContext): v
                     logger.info(`  ${update.note}`);
                 }
             }
-            await install(context, project, logger, options.install);
+            await runNpmInstall(context, project, logger, options.install);
         });
 
     module
@@ -149,13 +148,4 @@ export function registerModuleCommands(program: Command, context: CliContext): v
                 context.io.stdout(`\nProblems:\n${problems.map((problem) => `  ${problem}`).join("\n")}\n`);
             }
         });
-}
-
-async function install(context: CliContext, project: Project, logger: Logger, enabled: boolean): Promise<void> {
-    if (!enabled) {
-        logger.info("Skipped npm install; run it yourself to update node_modules.");
-        return;
-    }
-    logger.info("Running npm install...");
-    await context.runner.run("npm", ["install"], { cwd: project.paths.root });
 }

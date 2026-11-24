@@ -30,7 +30,8 @@ const ACTION_TEXT: Record<ReloadAction, string> = {
 };
 
 /**
- * Installs the packs of a build into the given servers (default: all) and
+ * Installs the packs of a build into the given servers (default: all
+ * except test servers) and
  * reloads or restarts the running ones. Every server is attempted; failures
  * are reported together at the end.
  */
@@ -39,7 +40,9 @@ export async function deployBuild(
     result: BuildResult,
     options: { servers?: readonly string[] | undefined; logger: Logger; signal?: AbortSignal | undefined },
 ): Promise<void> {
-    const names = options.servers?.length ? [...options.servers] : manager.store.names;
+    const names = options.servers?.length
+        ? [...options.servers]
+        : manager.store.entries.filter((entry) => !entry.config.test).map((entry) => entry.name);
     for (const name of names) {
         manager.store.get(name);
     }

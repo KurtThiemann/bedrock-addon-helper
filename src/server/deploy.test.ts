@@ -128,7 +128,7 @@ describe("findBuiltPacks", () => {
         const project = await Project.load({ cwd: root });
         await addPack(project, { name: "rp", type: "resource", minEngineVersion: async () => [1, 26, 66] });
         await addPack(project, { name: "later", type: "resource", minEngineVersion: async () => [1, 26, 66] });
-        assert.deepEqual(await findBuiltPacks(project), []);
+        assert.deepEqual(await findBuiltPacks(project, "release"), []);
 
         await buildProject(
             project,
@@ -136,7 +136,7 @@ describe("findBuiltPacks", () => {
             { logger: silentLogger, runner: { run: () => Promise.resolve() } },
         );
 
-        const built = await findBuiltPacks(project);
+        const built = await findBuiltPacks(project, "release");
         assert.deepEqual(
             built.map((pack) => [pack.name, pack.type]),
             [["rp", "resource"]],

@@ -31,4 +31,9 @@ export interface ContainerRuntime {
     attach(name: string): Promise<void>;
     /** Prints the container's output to the terminal. */
     logs(name: string, options: { follow: boolean; tail?: number | undefined }): Promise<void>;
+    /**
+     * Passes every line the container has printed, and prints from now on,
+     * to `onLine`. Resolves when the container stops or `signal` is aborted.
+     */
+    followLogs(name: string, onLine: (line: string) => void, signal: AbortSignal): Promise<void>;
 }

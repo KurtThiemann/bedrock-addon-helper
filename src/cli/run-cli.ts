@@ -5,6 +5,7 @@ import { registerInitCommand } from "./commands/init-command.ts";
 import { registerModuleCommands } from "./commands/module-commands.ts";
 import { registerPackCommands } from "./commands/pack-commands.ts";
 import { registerServerCommands } from "./commands/server-commands.ts";
+import { registerTestCommand } from "./commands/test-command.ts";
 import { registerWatchCommand } from "./commands/watch-command.ts";
 import { type CliContext, defaultCliContext } from "./context.ts";
 import { readPackageInfo } from "./package-info.ts";
@@ -30,6 +31,7 @@ export async function createProgram(context: CliContext): Promise<Command> {
     registerBuildCommand(program, context);
     registerServerCommands(program, context);
     registerWatchCommand(program, context);
+    registerTestCommand(program, context);
 
     return program;
 }
@@ -51,6 +53,7 @@ export async function runCli(argv: readonly string[], overrides: Partial<CliCont
         }
         if (error instanceof BahError) {
             io.stderr(`Error: ${error.message}\n`);
+            return error.exitCode;
         } else {
             // Unexpected: include the stack trace to make bug reports useful.
             io.stderr(`Unexpected error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);

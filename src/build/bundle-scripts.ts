@@ -2,15 +2,25 @@ import * as esbuild from "esbuild";
 import { type ModuleKind, moduleKindOf } from "../modules/module-catalog.ts";
 import { BahError } from "../util/errors.ts";
 
+/** A generated entry module, resolved like a file in `resolveDir`. */
+export interface GeneratedEntry {
+    contents: string;
+    resolveDir: string;
+    /** Name shown in error messages. */
+    sourcefile: string;
+}
+
 export interface BundleScriptsOptions {
-    /** Absolute path of the source entry (.js or .ts). */
-    entry: string;
+    /** Absolute path of the source entry (.js or .ts), or a generated entry. */
+    entry: string | GeneratedEntry;
     /** Absolute path of the bundled output file. */
     outfile: string;
     /** Directory used to resolve node_modules (the project root). */
     workingDirectory: string;
     /** Debug builds keep code readable and embed a source map. */
     debug: boolean;
+    /** Plugins that run before the engine module handling. */
+    plugins?: readonly esbuild.Plugin[];
 }
 
 export interface BundleScriptsResult {
@@ -29,7 +39,9 @@ export async function bundleScripts(options: BundleScriptsOptions): Promise<Bund
     let result: esbuild.BuildResult;
     try {
         result = await esbuild.build({
-            entryPoints: [options.entry],
+            ...(typeof options.entry === "string"
+                ? { entryPoints: [options.entry] }
+                : { stdin: { ...options.entry, loader: "ts" } }),
             outfile: options.outfile,
             absWorkingDir: options.workingDirectory,
             bundle: true,
@@ -39,7 +51,7 @@ export async function bundleScripts(options: BundleScriptsOptions): Promise<Bund
             target: SCRIPT_TARGET,
             minify: !options.debug,
             sourcemap: options.debug ? "inline" : false,
-            plugins: [engineModulesExternal],
+            plugins: [...(options.plugins ?? []), engineModulesExternal],
             logLevel: "silent",
         });
     } catch (error) {

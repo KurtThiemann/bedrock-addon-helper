@@ -2,7 +2,7 @@
 
 `bah` is a command line tool for Minecraft Bedrock Edition add-on projects. It creates and manages behavior and
 resource packs, manages `@minecraft` script modules, builds `.mcpack`/`.mcaddon` files (bundling JavaScript or
-TypeScript with esbuild), and runs local test servers in Docker that are updated on every build.
+TypeScript with esbuild), runs local test servers in Docker that are updated on every build, and runs GameTests.
 
 ## Requirements
 
@@ -59,10 +59,12 @@ my-addon/
 ├── bedrock-env.d.ts          declares the game's console, created with tsconfig.json
 ├── packs/
 │   ├── my-bp/                behavior pack sources (manifest.json, scripts/main.ts, ...)
+│   │   └── tests/            GameTests, only in test builds (see "GameTests")
 │   └── my-rp/
 ├── build/                    build output (gitignored)
 │   ├── packs/<pack>/         unpacked built packs
-│   └── artifacts/            <project>-<pack>.mcpack, <project>.mcaddon
+│   ├── artifacts/            <project>-<pack>.mcpack, <project>.mcaddon
+│   └── test/packs/<pack>/    test builds from "bah test"
 └── .bah/
     ├── servers.json          test server config (commit this)
     ├── servers.local.json    secrets and machine-specific settings (gitignored)
@@ -184,12 +186,12 @@ bah build [-d] [-t] [-p <packs...>] [-o <file>] [-s <servers...>] [--no-deploy]
 ```
 
 For each pack: syncs pack dependencies in the source manifest, copies the pack to `build/packs/<pack>/` (without the
-script source directory, dotfiles and OS clutter), bundles the scripts into one ES module at the entry path with a
+script source directory, `tests/`, dotfiles and OS clutter), bundles the scripts into one ES module at the entry path with a
 `.js` extension (target ES2022, engine modules kept external), writes the manifest, and zips it into
 `build/artifacts/<project>-<pack>.mcpack`. Bundled packs go into `build/artifacts/<project>.mcaddon`. Archives are
 reproducible.
 
-Then the packs are deployed to the test servers (see below).
+Then the packs are deployed to the servers (see below), except test servers.
 
 - `-d, --debug`: no minification, inline source maps.
 - `-t, --typecheck`: run `tsc --noEmit` first if a built pack uses TypeScript. Needs `typescript` installed in the
@@ -213,7 +215,7 @@ Builds and deploys, then again whenever a pack directory, `bah.json`, `package.j
 
 ```
 bah server create <name> [--game-version <version>] [--port <port>] [--experiment <names...>]
-                         [--reload <command|restart|none>] [--reload-command <command>]
+                         [--reload <command|restart|none>] [--reload-command <command>] [--test]
 bah server list
 bah server start [names...]
 bah server stop [names...]
@@ -224,11 +226,77 @@ bah server logs <name> [-f] [-n <lines>]
 bah server command <name> <command...>
 ```
 
-- `start`, `stop` and `restart` act on all servers when no names are given.
+- `create --test` creates a test server for `bah test`. `bah test` creates one named `test` if there is none.
+- `start` and `restart` act on all servers except test servers when no names are given; `stop` on all.
 - `remove` stops and removes the container and the config; `--purge` also deletes `.bah/servers/<name>/`.
 - `attach` connects to the server console (type commands, Ctrl+C to detach). If the server stops, it waits and
   attaches again when it is back.
 - `command` sends a console command, e.g. `bah server command dev reload`.
+
+### test
+
+```
+bah test init [-p <pack>] [--no-install]
+bah test [tests...] [--tag <tags...>] [-s <server>] [--timeout <seconds>] [--keep-running] [-t]
+```
+
+- `init` adds `@minecraft/server-gametest` (the beta for the game version the project's betas use, else the latest
+  release) to `devDependencies` and creates `tests/example.test.ts` (or `.js`) in the behavior pack. The pack
+  manifest is not changed.
+- `bah test` builds the test build, starts the test server with a fresh world, runs the tests and stops the server.
+  Without arguments it runs every test. `tests` are `Class:name` ids; `--tag` runs tests with these tags.
+- `-s, --server <name>`: test server to use. Default: the only test server, or a new one named `test`.
+- `--timeout <seconds>`: give up after this long. Default: 300.
+- `--keep-running`: leave the server running, e.g. to join it and look at the test areas.
+- `-t, --typecheck`: run `tsc --noEmit` first.
+
+Exit code: 0 if all tests passed, 1 if tests failed or were not found, 2 if the tests couldn't be run (build error,
+server error, timeout).
+
+## GameTests
+
+GameTests use the `@minecraft/server-gametest` script module (beta). Test files are `tests/**/*.test.ts` or
+`*.test.js` in a behavior pack with a script entry:
+
+```ts
+import { register } from "@minecraft/server-gametest";
+import { double } from "../scripts/math.ts";
+
+register("Math", "doubles", (test) => {
+    test.assert(double(2) === 4, "double(2) should be 4");
+    test.succeed();
+});
+```
+
+Tests are left out of normal builds. The test build (`build/test/packs/<pack>/`) differs from a normal build:
+
+- The script bundle (`scripts/<pack>-tests.js`) contains the pack's entry followed by all test files, so tests run
+  in the same script context as the add-on and can import its modules. It is not minified.
+- Imports of `@minecraft/server-gametest` go through a wrapper whose `register` and `registerAsync` give every test
+  the structure `bah:default` and the tag `bah`. A test's own `.structureName()` and `.tag()` calls override or
+  add to that.
+- The manifest gets the `@minecraft/server-gametest` dependency, with the version from `package.json`.
+- `tests/structures/` is copied into `structures/`, so `.structureName("ns:name")` loads
+  `tests/structures/ns/name.mcstructure`.
+- `structures/bah/default.mcstructure` is added: 8×8×8 blocks with a stone floor. The game places structures one
+  block above the test origin, so in test coordinates the floor is at y=1 and the free space starts at y=2.
+
+Test servers differ from other servers:
+
+- Every start begins with a copy of the world the server created on its first start (kept in
+  `.bah/servers/<name>/.bah-world-template/`). The world is flat (`level-type=FLAT` unless set in `properties`).
+- They get the latest test build instead of the normal build, never get deployed to by `build` or `watch`, and
+  always have the Beta APIs experiment.
+
+A run sends `gamerule domobspawning false`, `gamerule dodaylightcycle false` and `gamerule doweathercycle false`, then
+`gametest runset bah` (or `gametest run <test>` / `gametest runset <tag>`) on the console. The server only reports
+results as console output (`onTestPassed: <test>`, `onTestFailed: <test> - <message>`), which `bah` reads with
+`docker logs`; a run is finished when all tests announced by `Running <n> tests with tag ...` have a result. Script
+output is printed as it comes. Positions in error messages are mapped back to the source files with the bundle's
+source map. Tests of one run are placed next to each other near the world spawn and run at the same time.
+
+Beta modules only load on the game version they were published for. If the installed `@minecraft/server-gametest`
+targets a different version than the test server runs, `bah test` warns; update with `bah module update`.
 
 ## Test servers
 
@@ -267,6 +335,7 @@ mounts `.bah/servers/<name>/` as `/data`. Containers are kept after stopping so 
 | `variables`      | Written to `config/default/variables.json`.                                                                                                       |
 | `properties`     | `server.properties` values. `server-port`, `server-portv6`, `server-udp-ports` and `server-public-ip` are managed by `bah` and can't be set here. |
 | `reload`         | After a deploy: `{"mode": "command", "command": "..."}`, `{"mode": "restart"}` or `{"mode": "none"}`.                                             |
+| `test`           | `true` for test servers (see "GameTests"). Optional.                                                                                              |
 
 ### .bah/servers.local.json
 
@@ -299,16 +368,17 @@ one. `start` fails with a clear error if the ports are in use.
    `allow-cheats=true`, `default-player-permission-level=operator`, `texturepack-required=true`,
    `content-log-console-output-enabled=true`), the script config files, and `keys/server_identity_key.pem` (generated
    once, so clients don't have to trust the server again after each restart).
-3. On the first start, runs the server once to create the world (and download the server), then stops it.
-4. Installs the latest build.
+3. On the first start, runs the server once to create the world (and download the server), then stops it. Test
+   servers then save the world as their template, and replace the world with a copy of it on every start.
+4. Installs the latest build (test servers: the latest test build).
 5. Sets the experiments in `worlds/world/level.dat`. `gametest` (Beta APIs) is enabled automatically when a pack
-   uses a beta module.
+   uses a beta module, and always on test servers.
 6. Starts the server and waits until `/v1/join` answers (3 minutes, 6 on the first start).
 
 ### Deploying
 
 `build` and `watch` copy the built packs to `development_behavior_packs/<project>-<pack>/` and
-`development_resource_packs/<project>-<pack>/` of every server (running or not), and register them in
+`development_resource_packs/<project>-<pack>/` of every server except test servers (running or not), and register them in
 `worlds/world/world_behavior_packs.json` and `world_resource_packs.json`. Packs that were removed from the project are
 uninstalled; packs added to the world by other means are kept.
 

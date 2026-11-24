@@ -62,6 +62,11 @@ export const serverConfigSchema = z.strictObject({
         }
     }),
     reload: reloadStrategySchema,
+    /**
+     * A server for `bah test`: gets test builds instead of normal ones and
+     * starts with a fresh copy of its world every time.
+     */
+    test: z.boolean().optional(),
 });
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 

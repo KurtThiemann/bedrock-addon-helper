@@ -87,11 +87,11 @@ export async function buildProject(
     return { packs: results, mcaddonPath };
 }
 
-function usesTypeScript(pack: Pack): boolean {
+export function usesTypeScript(pack: Pack): boolean {
     return pack.scripts?.entry.endsWith(".ts") ?? false;
 }
 
-async function typecheck(project: Project, { logger, runner }: BuildServices): Promise<void> {
+export async function typecheck(project: Project, { logger, runner }: BuildServices): Promise<void> {
     if (!(await pathExists(join(project.paths.root, TSCONFIG_FILE)))) {
         throw new BahError(`Type checking needs a ${TSCONFIG_FILE} in the project root.`);
     }

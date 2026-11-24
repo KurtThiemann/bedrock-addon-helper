@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { BahError } from "../util/errors.ts";
 import type { ContainerRuntime, ContainerSpec, ContainerState } from "./container-runtime.ts";
 
@@ -100,6 +101,22 @@ export class DockerCli implements ContainerRuntime {
             args.push("--tail", String(options.tail));
         }
         return this.#interactive([...args, name]);
+    }
+
+    followLogs(name: string, onLine: (line: string) => void, signal: AbortSignal): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const child = spawn(this.#command, ["logs", "--follow", name], { stdio: ["ignore", "pipe", "pipe"] });
+            for (const stream of [child.stdout, child.stderr]) {
+                createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY }).on("line", onLine);
+            }
+            const stop = () => child.kill();
+            signal.addEventListener("abort", stop, { once: true });
+            child.on("error", (error) => reject(this.#unavailable(error)));
+            child.on("close", () => {
+                signal.removeEventListener("abort", stop);
+                resolve();
+            });
+        });
     }
 
     async #ensureImage(image: string): Promise<void> {

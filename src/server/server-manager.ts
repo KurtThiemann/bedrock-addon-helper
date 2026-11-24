@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { cp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type BedrockVersion, compareBedrockVersions, formatBedrockVersion } from "../bedrock/version.ts";
@@ -25,7 +25,7 @@ import {
 import { queryServer, type ServerInfo, waitUntilReady } from "./readiness.ts";
 import type { BedrockVersionSpec, ReloadStrategy, ServerConfig } from "./server-config.ts";
 import type { ServerConfigStore, ServerEntry } from "./server-config-store.ts";
-import { levelDatPath, writeServerFiles } from "./server-files.ts";
+import { levelDatPath, worldDirectory, writeServerFiles } from "./server-files.ts";
 
 export const SERVER_IMAGE = "itzg/minecraft-bedrock-server:latest";
 /** Experiment needed for beta script APIs. */
@@ -36,6 +36,8 @@ const START_TIMEOUT_MS = 3 * 60_000;
 /** The first start downloads the server, which takes longer. */
 const FIRST_START_TIMEOUT_MS = 6 * 60_000;
 const LOCALHOST = "127.0.0.1";
+/** Copy of a test server's freshly created world, restored before every start. */
+const WORLD_TEMPLATE_DIR = ".bah-world-template";
 
 export interface ServerManagerDeps {
     readonly runtime: ContainerRuntime;
@@ -53,6 +55,8 @@ export interface CreateServerOptions {
     readonly port?: number | undefined;
     readonly experiments?: readonly string[] | undefined;
     readonly reload?: ReloadStrategy | undefined;
+    /** Create a test server for `bah test`. */
+    readonly test?: boolean | undefined;
 }
 
 export interface ServerStatus {
@@ -133,7 +137,8 @@ export class ServerManager {
             experiments: [...new Set((options.experiments ?? []).map(resolveExperimentName))],
             variables: {},
             properties: {},
-            reload: options.reload ?? { mode: "command", command: "reload" },
+            reload: options.test ? { mode: "none" } : (options.reload ?? { mode: "command", command: "reload" }),
+            ...(options.test ? { test: true } : {}),
         };
         this.#store.set(name, config);
         await this.#store.save();
@@ -178,17 +183,19 @@ export class ServerManager {
 
         const spec = await this.#containerSpec(entry, version);
         const levelDat = levelDatPath(dataDir);
-        if (!(await pathExists(levelDat))) {
-            this.#deps.logger.info(`Creating the world for "${name}" (first start downloads the server)...`);
-            await this.#runUntilReady(entry, spec, FIRST_START_TIMEOUT_MS, options.signal);
-            await this.#deps.runtime.stop(container, STOP_TIMEOUT_SECONDS);
+        const isTest = entry.config.test === true;
+        if (isTest) {
+            await this.#resetWorld(entry, spec, options.signal);
+        } else if (!(await pathExists(levelDat))) {
+            await this.#createWorld(entry, spec, options.signal);
         }
 
         // Install the latest build, so a new server has the packs right away.
-        await deployPacks(dataDir, this.#project.name, await findBuiltPacks(this.#project), this.#projectPackNames());
+        const packs = await findBuiltPacks(this.#project, isTest ? "test" : "release");
+        await deployPacks(dataDir, this.#project.name, packs, this.#projectPackNames());
 
         const experiments = [...entry.config.experiments.map(resolveExperimentName)];
-        if (usage.beta && !experiments.includes(BETA_APIS_EXPERIMENT)) {
+        if ((usage.beta || isTest) && !experiments.includes(BETA_APIS_EXPERIMENT)) {
             experiments.push(BETA_APIS_EXPERIMENT);
         }
         await setExperiments(levelDat, experiments);
@@ -208,6 +215,9 @@ export class ServerManager {
         options: { signal?: AbortSignal } = {},
     ): Promise<ServerDeployResult> {
         const entry = this.#store.get(name);
+        if (entry.config.test) {
+            throw new BahError(`"${name}" is a test server; it only runs test builds from "bah test".`);
+        }
         await this.#writeServerFiles(entry);
         const deploy = await deployPacks(this.dataDirectory(name), this.#project.name, packs, this.#projectPackNames());
 
@@ -266,6 +276,14 @@ export class ServerManager {
     }
 
     /**
+     * Passes the server's output, from its start on, to `onLine` until the
+     * server stops or `signal` is aborted.
+     */
+    async followLogs(name: string, onLine: (line: string) => void, signal: AbortSignal): Promise<void> {
+        await this.#deps.runtime.followLogs(await this.#runningContainer(name), onLine, signal);
+    }
+
+    /**
      * Attaches the terminal to the server console. When the server stops
      * (e.g. a restart after a build), waits for it and attaches again, until
      * `signal` is aborted.
@@ -294,6 +312,30 @@ export class ServerManager {
     }
 
     /* ----------------------------------------------------------- helpers */
+
+    /** First start: the server downloads itself and generates the world; then it is stopped again. */
+    async #createWorld(entry: ServerEntry, spec: ContainerSpec, signal: AbortSignal | undefined): Promise<void> {
+        this.#deps.logger.info(`Creating the world for "${entry.name}" (first start downloads the server)...`);
+        await this.#runUntilReady(entry, spec, FIRST_START_TIMEOUT_MS, signal);
+        await this.#deps.runtime.stop(spec.name, STOP_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Gives a test server a fresh world: a copy of the world it generated on
+     * its first start, which is kept as a template.
+     */
+    async #resetWorld(entry: ServerEntry, spec: ContainerSpec, signal: AbortSignal | undefined): Promise<void> {
+        const dataDir = this.dataDirectory(entry.name);
+        const world = worldDirectory(dataDir);
+        const template = join(dataDir, WORLD_TEMPLATE_DIR);
+        if (!(await pathExists(template))) {
+            await rm(world, { recursive: true, force: true });
+            await this.#createWorld(entry, spec, signal);
+            await cp(world, template, { recursive: true });
+        }
+        await rm(world, { recursive: true, force: true });
+        await cp(template, world, { recursive: true });
+    }
 
     /** Writes server.properties and script config; returns the project's module usage. */
     async #writeServerFiles(entry: ServerEntry): Promise<{ modules: string[]; beta: boolean }> {

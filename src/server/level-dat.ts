@@ -1,10 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import type * as Nbt from "prismarine-nbt";
 import { BahError } from "../util/errors.ts";
-
-// prismarine-nbt is CommonJS; load it the way its typings describe it.
-const nbt = createRequire(import.meta.url)("prismarine-nbt") as typeof Nbt;
+import { type Nbt, nbt } from "../util/nbt.ts";
 
 /** Flags the game stores next to the experiment toggles. */
 const EXPERIMENT_META_FLAGS = ["experiments_ever_used", "saved_with_toggled_experiments"];

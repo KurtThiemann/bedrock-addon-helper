@@ -16,6 +16,7 @@ const createOptionsSchema = z.object({
     experiment: z.array(z.string().min(1)).optional(),
     reload: z.enum(["command", "restart", "none"]),
     reloadCommand: z.string().min(1),
+    test: z.boolean().optional(),
 });
 
 const removeOptionsSchema = z.object({ purge: z.boolean().optional() });
@@ -47,6 +48,7 @@ export function registerServerCommands(program: Command, context: CliContext): v
                 .default("command"),
         )
         .option("--reload-command <command>", "console command for --reload command", "reload")
+        .option("--test", 'make it a test server for "bah test" (fresh world on every start, test builds only)')
         .action(async (name: string, _options: unknown, command: Command) => {
             const options = parseOptions(createOptionsSchema, command);
             const { manager, logger } = await createManager();
@@ -60,6 +62,7 @@ export function registerServerCommands(program: Command, context: CliContext): v
                 port: options.port,
                 experiments: options.experiment,
                 reload,
+                test: options.test,
             });
 
             logger.info(
@@ -82,7 +85,7 @@ export function registerServerCommands(program: Command, context: CliContext): v
             for (const name of names) {
                 const status = await manager.status(name);
                 rows.push([
-                    name,
+                    status.config.test ? `${name} (test)` : name,
                     status.state === "running" && status.info === null ? "starting" : status.state,
                     status.info?.version ?? status.config.version,
                     `${status.config.port}/tcp ${formatUdpPorts(status.config.udpPorts)}/udp`,
@@ -95,12 +98,12 @@ export function registerServerCommands(program: Command, context: CliContext): v
 
     server
         .command("start")
-        .description("Start servers (default: all)")
+        .description("Start servers (default: all except test servers)")
         .argument("[names...]", "servers to start")
         .action(async (names: string[]) => {
             const { manager, logger } = await createManager();
             const signal = context.interrupt();
-            for (const name of selectServers(manager, names)) {
+            for (const name of selectServers(manager, names, { includeTest: false })) {
                 if ((await manager.state(name)) === "running") {
                     logger.info(`Server "${name}" is already running.`);
                     continue;
@@ -119,19 +122,19 @@ export function registerServerCommands(program: Command, context: CliContext): v
         .argument("[names...]", "servers to stop")
         .action(async (names: string[]) => {
             const { manager, logger } = await createManager();
-            for (const name of selectServers(manager, names)) {
+            for (const name of selectServers(manager, names, { includeTest: true })) {
                 logger.info((await manager.stop(name)) ? `Stopped "${name}".` : `Server "${name}" is not running.`);
             }
         });
 
     server
         .command("restart")
-        .description("Restart servers (default: all)")
+        .description("Restart servers (default: all except test servers)")
         .argument("[names...]", "servers to restart")
         .action(async (names: string[]) => {
             const { manager, logger } = await createManager();
             const signal = context.interrupt();
-            for (const name of selectServers(manager, names)) {
+            for (const name of selectServers(manager, names, { includeTest: false })) {
                 logger.info(`Restarting "${name}"...`);
                 const result = await manager.restart(name, { signal });
                 logger.info(`Server "${name}" is running at ${result.address}`);
@@ -187,14 +190,17 @@ export function registerServerCommands(program: Command, context: CliContext): v
         });
 }
 
-function selectServers(manager: ServerManager, names: readonly string[]): string[] {
+/** The named servers, or all of them; test servers are only included in "all" if `includeTest` is set. */
+function selectServers(manager: ServerManager, names: readonly string[], options: { includeTest: boolean }): string[] {
     if (names.length > 0) {
         for (const name of names) {
             manager.store.get(name);
         }
         return [...names];
     }
-    const all = manager.store.names;
+    const all = manager.store.entries
+        .filter((entry) => options.includeTest || !entry.config.test)
+        .map((entry) => entry.name);
     if (all.length === 0) {
         throw new BahError('This project has no servers. Create one with "bah server create <name>".');
     }

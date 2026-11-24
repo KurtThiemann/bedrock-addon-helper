@@ -2,7 +2,13 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import { mcpackPath, type PackBuildResult, packOutputDirectory } from "../build/build-pack.ts";
+import {
+    mcpackPath,
+    type PackBuildResult,
+    packOutputDirectory,
+    type TestPackBuildResult,
+    testPackOutputDirectory,
+} from "../build/build-pack.ts";
 import { type PackVersion, packVersionSchema, readManifest } from "../pack/manifest.ts";
 import { MANIFEST_FILE } from "../pack/pack.ts";
 import type { Project } from "../project/project.ts";
@@ -10,7 +16,7 @@ import { type PackType, packTypeSchema } from "../project/project-config.ts";
 import { pathExists } from "../util/fs.ts";
 import { readJsonFileOrDefault, writeJsonFile } from "../util/json-file.ts";
 import { identifierSchema, uuidSchema } from "../util/schemas.ts";
-import { LEVEL_NAME } from "./server-files.ts";
+import { worldDirectory } from "./server-files.ts";
 
 /** A built pack ready to be copied into a server. */
 export interface DeployablePack {
@@ -52,7 +58,7 @@ export interface DeployResult {
     readonly packListChanged: boolean;
 }
 
-export function toDeployable(result: PackBuildResult): DeployablePack {
+export function toDeployable(result: PackBuildResult | TestPackBuildResult): DeployablePack {
     return {
         name: result.pack.name,
         type: result.pack.type,
@@ -62,13 +68,20 @@ export function toDeployable(result: PackBuildResult): DeployablePack {
     };
 }
 
-/** Packs of the project that have been built before (for deploying on server start). */
-export async function findBuiltPacks(project: Project): Promise<DeployablePack[]> {
+/**
+ * Packs of the project that have been built before (for deploying on server
+ * start): normal builds, or test builds from `bah test`.
+ */
+export async function findBuiltPacks(project: Project, variant: "release" | "test"): Promise<DeployablePack[]> {
     const packs: DeployablePack[] = [];
     for (const pack of project.packs) {
-        const directory = packOutputDirectory(project, pack);
-        // The .mcpack is written last, so its presence means the build finished.
-        if (!(await pathExists(mcpackPath(project, pack))) || !(await pathExists(join(directory, MANIFEST_FILE)))) {
+        const directory =
+            variant === "test" ? testPackOutputDirectory(project, pack) : packOutputDirectory(project, pack);
+        // The manifest is written after the scripts and the .mcpack last, so their presence means the build finished.
+        const complete =
+            (await pathExists(join(directory, MANIFEST_FILE))) &&
+            (variant === "test" || (await pathExists(mcpackPath(project, pack))));
+        if (!complete) {
             continue;
         }
         const { header } = await readManifest(join(directory, MANIFEST_FILE));
@@ -90,7 +103,7 @@ export async function deployPacks(
 ): Promise<DeployResult> {
     const statePath = join(dataDir, DEPLOY_STATE_FILE);
     const state = await readJsonFileOrDefault(statePath, deployStateSchema, { packs: [] });
-    const worldDir = join(dataDir, "worlds", LEVEL_NAME);
+    const worldDir = worldDirectory(dataDir);
     const worldPacksPath = (type: PackType) => join(worldDir, `world_${type}_packs.json`);
     const before: Record<PackType, WorldPacks> = {
         behavior: await readJsonFileOrDefault(worldPacksPath("behavior"), worldPacksSchema, []),
